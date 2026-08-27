@@ -191,7 +191,12 @@ const server = Bun.serve({
           return json({ error: "shotFilename and generationId are required" }, { status: 400 });
         }
         const state = await mutateFilmState(req.params.film, (s) => {
-          s.timeline.push({ id: nanoid(8), shotFilename: body.shotFilename!, generationId: body.generationId! });
+          s.timeline.push({
+            id: nanoid(8),
+            shotFilename: body.shotFilename!,
+            generationId: body.generationId!,
+            muted: false,
+          });
         });
         return json(state);
       },
@@ -208,6 +213,14 @@ const server = Bun.serve({
     },
 
     "/api/films/:film/timeline/:clipId": {
+      PATCH: async (req) => {
+        const body = (await req.json()) as { muted?: boolean };
+        const state = await mutateFilmState(req.params.film, (s) => {
+          const clip = s.timeline.find((c) => c.id === req.params.clipId);
+          if (clip && typeof body.muted === "boolean") clip.muted = body.muted;
+        });
+        return json(state);
+      },
       DELETE: async (req) => {
         const state = await mutateFilmState(req.params.film, (s) => {
           s.timeline = s.timeline.filter((c) => c.id !== req.params.clipId);
@@ -218,8 +231,16 @@ const server = Bun.serve({
 
     "/api/films/:film/soundtrack": {
       PATCH: async (req) => {
-        const body = (await req.json()) as { inSec?: number };
+        const body = (await req.json()) as { filename?: string | null; inSec?: number };
         const state = await mutateFilmState(req.params.film, (s) => {
+          if (body.filename === null) {
+            s.soundtrack = null;
+          } else if (typeof body.filename === "string") {
+            s.soundtrack = {
+              filename: body.filename,
+              inSec: s.soundtrack?.filename === body.filename ? s.soundtrack.inSec : 0,
+            };
+          }
           if (s.soundtrack && typeof body.inSec === "number") {
             s.soundtrack.inSec = Math.max(0, body.inSec);
           }
@@ -230,10 +251,11 @@ const server = Bun.serve({
 
     "/api/films/:film/audiofx": {
       PATCH: async (req) => {
-        const body = (await req.json()) as { reverb?: number; lowpassHz?: number | null };
+        const body = (await req.json()) as { reverb?: number; lowpassHz?: number | null; clipsOnly?: boolean };
         const state = await mutateFilmState(req.params.film, (s) => {
           if (typeof body.reverb === "number") s.audioFx.reverb = Math.max(0, Math.min(100, body.reverb));
           if (body.lowpassHz === null || typeof body.lowpassHz === "number") s.audioFx.lowpassHz = body.lowpassHz;
+          if (typeof body.clipsOnly === "boolean") s.audioFx.clipsOnly = body.clipsOnly;
         });
         return json(state);
       },
@@ -243,6 +265,17 @@ const server = Bun.serve({
       POST: async (req) => {
         try {
           const result = await exportFilm(req.params.film);
+          return json(result);
+        } catch (err) {
+          return json({ error: err instanceof Error ? err.message : String(err) }, { status: 400 });
+        }
+      },
+    },
+
+    "/api/films/:film/preview": {
+      POST: async (req) => {
+        try {
+          const result = await exportFilm(req.params.film, { preview: true });
           return json(result);
         } catch (err) {
           return json({ error: err instanceof Error ? err.message : String(err) }, { status: 400 });

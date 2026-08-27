@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import type { Generation } from "@server/types";
+import { setHoveredMedia } from "../lightbox";
 
 function clamp01(x: number): number {
   return Math.min(1, Math.max(0, x));
@@ -131,7 +132,10 @@ export function Carousel({
             loop
             playsInline
             muted={!hovering}
-            onMouseEnter={() => setHovering(true)}
+            onMouseEnter={() => {
+              setHovering(true);
+              setHoveredMedia({ kind: "video", src: `/films/${film}/${generation.videoFilename}` });
+            }}
             onMouseLeave={() => setHovering(false)}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}

@@ -1,4 +1,4 @@
-import type { FilmState, Generation, GenerationParams } from "@server/types";
+import type { FilmStateResponse, Generation, GenerationParams } from "@server/types";
 
 async function req<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
@@ -12,10 +12,10 @@ async function req<T>(url: string, init?: RequestInit): Promise<T> {
 export const api = {
   listFilms: () => req<{ films: string[] }>("/api/films"),
 
-  getState: (film: string) => req<FilmState>(`/api/films/${film}/state`),
+  getState: (film: string) => req<FilmStateResponse>(`/api/films/${film}/state`),
 
   addPrompt: (film: string, text: string, isGlobal: boolean) =>
-    req<FilmState>(`/api/films/${film}/prompts`, {
+    req<FilmStateResponse>(`/api/films/${film}/prompts`, {
       method: "POST",
       body: JSON.stringify({ text, isGlobal }),
     }),
@@ -25,16 +25,16 @@ export const api = {
     id: string,
     patch: { text?: string; isGlobal?: boolean; globalEnabled?: boolean },
   ) =>
-    req<FilmState>(`/api/films/${film}/prompts/${id}`, {
+    req<FilmStateResponse>(`/api/films/${film}/prompts/${id}`, {
       method: "PATCH",
       body: JSON.stringify(patch),
     }),
 
   deletePrompt: (film: string, id: string) =>
-    req<FilmState>(`/api/films/${film}/prompts/${id}`, { method: "DELETE" }),
+    req<FilmStateResponse>(`/api/films/${film}/prompts/${id}`, { method: "DELETE" }),
 
   updateShot: (film: string, filename: string, patch: { selectedPromptIds?: string[]; customText?: string }) =>
-    req<FilmState>(`/api/films/${film}/shots/${encodeURIComponent(filename)}`, {
+    req<FilmStateResponse>(`/api/films/${film}/shots/${encodeURIComponent(filename)}`, {
       method: "PATCH",
       body: JSON.stringify(patch),
     }),
@@ -46,44 +46,53 @@ export const api = {
     }),
 
   deleteGeneration: (film: string, filename: string, generationId: string) =>
-    req<FilmState>(
+    req<FilmStateResponse>(
       `/api/films/${film}/shots/${encodeURIComponent(filename)}/generations/${generationId}`,
       { method: "DELETE" },
     ),
 
   trimGeneration: (film: string, filename: string, generationId: string, patch: { inSec?: number; outSec?: number }) =>
-    req<FilmState>(
+    req<FilmStateResponse>(
       `/api/films/${film}/shots/${encodeURIComponent(filename)}/generations/${generationId}`,
       { method: "PATCH", body: JSON.stringify(patch) },
     ),
 
   addToTimeline: (film: string, shotFilename: string, generationId: string) =>
-    req<FilmState>(`/api/films/${film}/timeline`, {
+    req<FilmStateResponse>(`/api/films/${film}/timeline`, {
       method: "POST",
       body: JSON.stringify({ shotFilename, generationId }),
     }),
 
   removeFromTimeline: (film: string, clipId: string) =>
-    req<FilmState>(`/api/films/${film}/timeline/${clipId}`, { method: "DELETE" }),
+    req<FilmStateResponse>(`/api/films/${film}/timeline/${clipId}`, { method: "DELETE" }),
+
+  updateTimelineClip: (film: string, clipId: string, patch: { muted?: boolean }) =>
+    req<FilmStateResponse>(`/api/films/${film}/timeline/${clipId}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
 
   reorderTimeline: (film: string, clipIds: string[]) =>
-    req<FilmState>(`/api/films/${film}/timeline`, {
+    req<FilmStateResponse>(`/api/films/${film}/timeline`, {
       method: "PATCH",
       body: JSON.stringify({ clipIds }),
     }),
 
-  updateSoundtrack: (film: string, inSec: number) =>
-    req<FilmState>(`/api/films/${film}/soundtrack`, {
+  updateSoundtrack: (film: string, patch: { filename?: string | null; inSec?: number }) =>
+    req<FilmStateResponse>(`/api/films/${film}/soundtrack`, {
       method: "PATCH",
-      body: JSON.stringify({ inSec }),
+      body: JSON.stringify(patch),
     }),
 
-  updateAudioFx: (film: string, patch: { reverb?: number; lowpassHz?: number | null }) =>
-    req<FilmState>(`/api/films/${film}/audiofx`, {
+  updateAudioFx: (film: string, patch: { reverb?: number; lowpassHz?: number | null; clipsOnly?: boolean }) =>
+    req<FilmStateResponse>(`/api/films/${film}/audiofx`, {
       method: "PATCH",
       body: JSON.stringify(patch),
     }),
 
   exportFilm: (film: string) =>
     req<{ filename: string; outputPath: string }>(`/api/films/${film}/export`, { method: "POST" }),
+
+  previewFilm: (film: string) =>
+    req<{ filename: string; outputPath: string }>(`/api/films/${film}/preview`, { method: "POST" }),
 };

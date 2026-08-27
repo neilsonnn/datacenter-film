@@ -1,5 +1,6 @@
 import { useState, type DragEvent } from "react";
-import type { FilmState } from "@server/types";
+import type { FilmStateResponse } from "@server/types";
+import { hoverableMedia } from "../lightbox";
 
 export const TIMELINE_HEIGHT = 190;
 
@@ -14,19 +15,29 @@ export function Timeline({
   state,
   onReorder,
   onRemoveClip,
+  onToggleClipMute,
+  onSelectSoundtrack,
   onUpdateSoundtrackIn,
   onExport,
+  onPreview,
 }: {
   film: string;
-  state: FilmState;
+  state: FilmStateResponse;
   onReorder: (clipIds: string[]) => void;
   onRemoveClip: (clipId: string) => void;
+  onToggleClipMute: (clipId: string, muted: boolean) => void;
+  onSelectSoundtrack: (filename: string | null) => void;
   onUpdateSoundtrackIn: (inSec: number) => void;
   onExport: () => Promise<{ filename: string; outputPath: string }>;
+  onPreview: () => Promise<{ filename: string; outputPath: string }>;
 }) {
   const [exporting, setExporting] = useState(false);
   const [exportResult, setExportResult] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
+
+  const [previewing, setPreviewing] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewSrc, setPreviewSrc] = useState<string | null>(null);
 
   const clipDurations = state.timeline.map((clip) => {
     const gen = state.shots[clip.shotFilename]?.generations.find((g) => g.id === clip.generationId);
@@ -68,6 +79,20 @@ export function Timeline({
     }
   }
 
+  async function handlePreview() {
+    setPreviewing(true);
+    setPreviewError(null);
+    try {
+      const result = await onPreview();
+      // preview.mp4 is overwritten in place each time — cache-bust so the <video> reloads the new bytes.
+      setPreviewSrc(`/films/${film}/${result.filename}?t=${Date.now()}`);
+    } catch (err) {
+      setPreviewError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPreviewing(false);
+    }
+  }
+
   return (
     <div
       style={{
@@ -86,21 +111,42 @@ export function Timeline({
         zIndex: 500,
       }}
     >
-      {state.soundtrack && (
-        <div style={{ flexShrink: 0, borderRight: "1px solid #000", paddingRight: "1rem" }}>
-          <div style={{ fontSize: "0.8rem", marginBottom: "0.25rem" }}>soundtrack</div>
-          <div
-            style={{
-              maxWidth: 140,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-              fontSize: "0.75rem",
-              marginBottom: "0.25rem",
-            }}
-          >
-            {state.soundtrack.filename}
+      <div style={{ flexShrink: 0, borderRight: "1px solid #000", paddingRight: "1rem", display: "flex", flexDirection: "column", alignItems: "center" }}>
+        {previewSrc ? (
+          <video
+            key={previewSrc}
+            src={previewSrc}
+            autoPlay
+            playsInline
+            {...hoverableMedia({ kind: "video", src: previewSrc })}
+            style={{ width: 140, height: 79, background: "#000" }}
+          />
+        ) : (
+          <div style={{ width: 140, height: 79, background: "#000", color: "#999", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.7rem" }}>
+            no preview yet
           </div>
+        )}
+        <button onClick={handlePreview} disabled={previewing || state.timeline.length === 0} style={{ marginTop: "0.25rem", width: "100%" }}>
+          {previewing ? "rendering..." : "Preview"}
+        </button>
+        {previewError && <div style={{ fontSize: "0.65rem", color: "red", maxWidth: 140 }}>{previewError}</div>}
+      </div>
+
+      <div style={{ flexShrink: 0, borderRight: "1px solid #000", paddingRight: "1rem" }}>
+        <div style={{ fontSize: "0.8rem", marginBottom: "0.25rem" }}>soundtrack</div>
+        <select
+          value={state.soundtrack?.filename ?? ""}
+          onChange={(e) => onSelectSoundtrack(e.target.value || null)}
+          style={{ maxWidth: 140, marginBottom: "0.25rem", display: "block" }}
+        >
+          <option value="">None</option>
+          {state.audioFiles.map((f) => (
+            <option key={f} value={f}>
+              {f}
+            </option>
+          ))}
+        </select>
+        {state.soundtrack && (
           <label style={{ fontSize: "0.75rem" }}>
             in (s){" "}
             <input
@@ -111,13 +157,13 @@ export function Timeline({
               onBlur={(e) => onUpdateSoundtrackIn(Number(e.target.value))}
             />
           </label>
-        </div>
-      )}
+        )}
+      </div>
 
       <div style={{ flex: 1, minWidth: 0, display: "flex", gap: "0.5rem", overflowX: "auto" }}>
         {state.timeline.length === 0 && (
           <p style={{ color: "#666", fontSize: "0.85rem" }}>
-            No clips yet — hit "Add to Timeline" on a shot's output to add it here.
+            No clips yet — hit "+" on a shot's output to add it here.
           </p>
         )}
         {state.timeline.map((clip, i) => {
@@ -155,6 +201,23 @@ export function Timeline({
                 }}
               >
                 x
+              </button>
+              <button
+                onClick={() => onToggleClipMute(clip.id, !clip.muted)}
+                title={clip.muted ? "unmute this clip" : "mute this clip"}
+                style={{
+                  position: "absolute",
+                  top: 2,
+                  left: 2,
+                  padding: "0 0.25rem",
+                  fontSize: "0.7rem",
+                  lineHeight: 1.4,
+                  borderColor: clip.muted ? "#c00" : undefined,
+                  background: clip.muted ? "#ffe6e6" : undefined,
+                  color: clip.muted ? "#c00" : undefined,
+                }}
+              >
+                {clip.muted ? "M" : "m"}
               </button>
               <img
                 src={`/films/${film}/${clip.shotFilename}`}

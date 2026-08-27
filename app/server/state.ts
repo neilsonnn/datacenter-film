@@ -1,6 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
-import type { FilmState, ShotState } from "./types";
+import type { FilmState, FilmStateResponse, ShotState, TimelineClip } from "./types";
 import { listAudioFiles, listShotImages } from "./scanner";
 
 const FILMS_DIR = path.resolve(import.meta.dir, "..", "..", "films");
@@ -27,7 +27,7 @@ function emptyState(): FilmState {
     shots: {},
     timeline: [],
     soundtrack: null,
-    audioFx: { reverb: 0, lowpassHz: null },
+    audioFx: { reverb: 0, lowpassHz: null, clipsOnly: false },
   };
 }
 
@@ -39,12 +39,19 @@ async function readStateFile(film: string): Promise<FilmState> {
   if (!(await file.exists())) return emptyState();
   try {
     const parsed = await file.json();
+    const timeline: TimelineClip[] = Array.isArray(parsed.timeline)
+      ? parsed.timeline.map((c: TimelineClip) => ({ ...c, muted: c.muted ?? false }))
+      : [];
     return {
       prompts: Array.isArray(parsed.prompts) ? parsed.prompts : [],
       shots: parsed.shots && typeof parsed.shots === "object" ? parsed.shots : {},
-      timeline: Array.isArray(parsed.timeline) ? parsed.timeline : [],
+      timeline,
       soundtrack: parsed.soundtrack ?? null,
-      audioFx: parsed.audioFx ?? { reverb: 0, lowpassHz: null },
+      audioFx: {
+        reverb: parsed.audioFx?.reverb ?? 0,
+        lowpassHz: parsed.audioFx?.lowpassHz ?? null,
+        clipsOnly: parsed.audioFx?.clipsOnly ?? false,
+      },
     };
   } catch {
     return emptyState();
@@ -84,12 +91,15 @@ export function getFilmDir(film: string): string {
   return filmDir(film);
 }
 
-/** Scans disk for shot images and an audio file, merges with persisted state (new files become fresh shots / the soundtrack), persists if changed, and returns the merged state. */
-export async function getMergedFilmState(film: string): Promise<FilmState> {
-  const state = await getState(film);
-  const filenames = await listShotImages(filmDir(film));
+/**
+ * Syncs a persisted FilmState against what's actually on disk: new images become fresh
+ * shots, and a soundtrack whose file vanished gets un-selected. Mutates `state` in place
+ * (caller decides whether/when to persist) and returns the live list of audio files.
+ */
+async function mergeDiskIntoState(film: string, state: FilmState): Promise<{ audioFiles: string[]; changed: boolean }> {
   let changed = false;
 
+  const filenames = await listShotImages(filmDir(film));
   for (const filename of filenames) {
     if (!state.shots[filename]) {
       state.shots[filename] = {
@@ -107,23 +117,27 @@ export async function getMergedFilmState(film: string): Promise<FilmState> {
     state.soundtrack = null;
     changed = true;
   }
-  if (!state.soundtrack && audioFiles.length > 0) {
-    state.soundtrack = { filename: audioFiles[0], inSec: 0 };
-    changed = true;
-  }
 
+  return { audioFiles, changed };
+}
+
+/** Scans disk, merges into the persisted state, persists if anything changed, and returns the response shape (including live audioFiles). */
+export async function getMergedFilmState(film: string): Promise<FilmStateResponse> {
+  const state = await getState(film);
+  const { audioFiles, changed } = await mergeDiskIntoState(film, state);
   if (changed) await persist(film, state);
-  return state;
+  return { ...state, audioFiles };
 }
 
 export async function mutateFilmState(
   film: string,
   mutator: (state: FilmState) => void,
-): Promise<FilmState> {
+): Promise<FilmStateResponse> {
   const state = await getState(film);
   mutator(state);
+  const { audioFiles } = await mergeDiskIntoState(film, state);
   await persist(film, state);
-  return state;
+  return { ...state, audioFiles };
 }
 
 export function getShot(state: FilmState, filename: string): ShotState | undefined {

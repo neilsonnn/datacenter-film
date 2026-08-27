@@ -22,11 +22,7 @@ export function GenerationSettings({
       </label>
       <label>
         resolution{" "}
-        <select
-          value={params.resolution}
-          onChange={(e) => onChange({ ...params, resolution: e.target.value as "480P" | "768P" })}
-        >
-          <option value="480P">480P</option>
+        <select value={params.resolution} onChange={(e) => onChange({ ...params, resolution: e.target.value as "768P" })}>
           <option value="768P">768P</option>
         </select>
       </label>

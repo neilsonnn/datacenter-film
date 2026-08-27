@@ -17,7 +17,17 @@ export function GlobalPromptsBar({
   return (
     <ul style={{ display: "flex", flexDirection: "column", gap: "0.5rem", listStyle: "none", padding: 0 }}>
       {globals.map((p) => (
-        <li key={p.id} style={{ display: "flex", alignItems: "center", gap: "0.4rem", border: "1px solid #ccc", padding: "0.3rem 0.6rem" }}>
+        <li
+          key={p.id}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.4rem",
+            border: "1px solid #ccc",
+            padding: "0.3rem 0.6rem",
+            maxWidth: 260,
+          }}
+        >
           <Switch.Root
             checked={p.globalEnabled}
             onCheckedChange={(checked) => onToggle(p.id, checked)}
@@ -35,7 +45,18 @@ export function GlobalPromptsBar({
               }}
             />
           </Switch.Root>
-          <span style={{ opacity: p.globalEnabled ? 1 : 0.5 }}>{p.text}</span>
+          <span
+            title={p.text}
+            style={{
+              opacity: p.globalEnabled ? 1 : 0.5,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              minWidth: 0,
+            }}
+          >
+            {p.text}
+          </span>
         </li>
       ))}
     </ul>

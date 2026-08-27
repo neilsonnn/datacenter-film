@@ -5,7 +5,7 @@ export function AudioFxPanel({
   onChange,
 }: {
   audioFx: AudioFx;
-  onChange: (patch: { reverb?: number; lowpassHz?: number | null }) => void;
+  onChange: (patch: { reverb?: number; lowpassHz?: number | null; clipsOnly?: boolean }) => void;
 }) {
   return (
     <div>
@@ -33,6 +33,15 @@ export function AudioFxPanel({
           onChange={(e) => onChange({ lowpassHz: e.target.value.trim() ? Number(e.target.value) : null })}
           style={{ width: "100%" }}
         />
+      </label>
+
+      <label style={{ display: "block", marginTop: "0.5rem" }}>
+        <input
+          type="checkbox"
+          checked={audioFx.clipsOnly}
+          onChange={(e) => onChange({ clipsOnly: e.target.checked })}
+        />{" "}
+        apply to clip audio only (not soundtrack)
       </label>
     </div>
   );

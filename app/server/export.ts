@@ -2,8 +2,10 @@ import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { getFilmDir, getMergedFilmState, repoRoot } from "./state";
 
-const CLIP_WIDTH = 1280;
-const CLIP_HEIGHT = 720;
+// Native output size of fal's 768P setting — matching it exactly means the scale/pad
+// step below is a no-op for real clips, instead of letterboxing them into 16:9.
+const CLIP_WIDTH = 1440;
+const CLIP_HEIGHT = 704;
 
 async function runFfmpeg(args: string[]): Promise<void> {
   const proc = Bun.spawn(["ffmpeg", ...args], { stdout: "pipe", stderr: "pipe" });
@@ -28,7 +30,12 @@ function buildAudioFilterChain(audioFx: { reverb: number; lowpassHz: number | nu
   return filters.length > 0 ? filters.join(",") : null;
 }
 
-export async function exportFilm(film: string): Promise<{ filename: string; outputPath: string }> {
+const AMIX = "amix=inputs=2:duration=first:dropout_transition=0";
+
+export async function exportFilm(
+  film: string,
+  options: { preview?: boolean } = {},
+): Promise<{ filename: string; outputPath: string }> {
   const state = await getMergedFilmState(film);
   if (state.timeline.length === 0) throw new Error("timeline is empty");
 
@@ -64,13 +71,17 @@ export async function exportFilm(film: string): Promise<{ filename: string; outp
         `scale=${CLIP_WIDTH}:${CLIP_HEIGHT}:force_original_aspect_ratio=decrease,pad=${CLIP_WIDTH}:${CLIP_HEIGHT}:(ow-iw)/2:(oh-ih)/2,setsar=1`,
         "-r",
         "30",
-        "-an",
+        // Muted clips still carry a (silent) audio stream, so concat below sees a
+        // consistent stream layout across every segment regardless of mute state.
+        ...(clip.muted ? ["-af", "volume=0"] : []),
         "-c:v",
         "libx264",
         "-preset",
         "veryfast",
         "-crf",
         "20",
+        "-c:a",
+        "aac",
         trimmedPath,
       ]);
       trimmedPaths.push(trimmedPath);
@@ -91,15 +102,55 @@ export async function exportFilm(film: string): Promise<{ filename: string; outp
     const concatVideoPath = path.join(tmpDir, "concat.mp4");
     await runFfmpeg(["-y", "-f", "concat", "-safe", "0", "-i", concatListPath, "-c", "copy", concatVideoPath]);
 
-    const exportsDir = path.join(repoRoot(), "exports");
-    await mkdir(exportsDir, { recursive: true });
-    const outputFilename = `${film}-${Date.now()}.mp4`;
-    const outputPath = path.join(exportsDir, outputFilename);
+    let outputFilename: string;
+    let outputPath: string;
+    if (options.preview) {
+      outputFilename = ".preview.mp4";
+      outputPath = path.join(filmDir, outputFilename);
+    } else {
+      const exportsDir = path.join(repoRoot(), "exports");
+      await mkdir(exportsDir, { recursive: true });
+      outputFilename = `${film}-${Date.now()}.mp4`;
+      outputPath = path.join(exportsDir, outputFilename);
+    }
 
-    if (state.soundtrack) {
+    const audioFilterChain = buildAudioFilterChain(state.audioFx);
+
+    if (!state.soundtrack) {
+      // Only bus is the clips' own (already muted-where-requested) audio.
+      if (!audioFilterChain) {
+        await runFfmpeg(["-y", "-i", concatVideoPath, "-c", "copy", "-t", String(totalVideoDuration), outputPath]);
+      } else {
+        await runFfmpeg([
+          "-y",
+          "-i",
+          concatVideoPath,
+          "-af",
+          audioFilterChain,
+          "-c:v",
+          "copy",
+          "-c:a",
+          "aac",
+          "-t",
+          String(totalVideoDuration),
+          outputPath,
+        ]);
+      }
+    } else {
+      // Mix clip audio (0:a) with the soundtrack (1:a) — soundtrack no longer replaces
+      // clip audio, it plays alongside it. FX either hits the combined mix, or just the
+      // clip bus beforehand, depending on audioFx.clipsOnly.
       const soundtrackPath = path.join(filmDir, state.soundtrack.filename);
-      const audioFilterChain = buildAudioFilterChain(state.audioFx);
-      const args = [
+      let filterComplex: string;
+      if (!audioFilterChain) {
+        filterComplex = `[0:a][1:a]${AMIX}[aout]`;
+      } else if (state.audioFx.clipsOnly) {
+        filterComplex = `[0:a]${audioFilterChain}[a0fx];[a0fx][1:a]${AMIX}[aout]`;
+      } else {
+        filterComplex = `[0:a][1:a]${AMIX}[mixed];[mixed]${audioFilterChain}[aout]`;
+      }
+
+      await runFfmpeg([
         "-y",
         "-i",
         concatVideoPath,
@@ -107,11 +158,12 @@ export async function exportFilm(film: string): Promise<{ filename: string; outp
         String(Math.max(0, state.soundtrack.inSec)),
         "-i",
         soundtrackPath,
+        "-filter_complex",
+        filterComplex,
         "-map",
         "0:v",
         "-map",
-        "1:a",
-        ...(audioFilterChain ? ["-af", audioFilterChain] : []),
+        "[aout]",
         "-c:v",
         "copy",
         "-c:a",
@@ -119,10 +171,7 @@ export async function exportFilm(film: string): Promise<{ filename: string; outp
         "-t",
         String(totalVideoDuration),
         outputPath,
-      ];
-      await runFfmpeg(args);
-    } else {
-      await runFfmpeg(["-y", "-i", concatVideoPath, "-c", "copy", "-t", String(totalVideoDuration), outputPath]);
+      ]);
     }
 
     return { filename: outputFilename, outputPath };

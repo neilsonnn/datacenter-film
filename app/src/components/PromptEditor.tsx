@@ -25,7 +25,7 @@ export function PromptEditor({
   return (
     <div>
       <h2>Prompt Editor</h2>
-      <ul style={{ listStyle: "none", padding: 0 }}>
+      <ul style={{ listStyle: "none", padding: 0, maxHeight: 320, overflowY: "auto" }}>
         {prompts.map((p) => (
           <li key={p.id} style={{ borderBottom: "1px solid #ddd", padding: "0.5rem 0" }}>
             <textarea

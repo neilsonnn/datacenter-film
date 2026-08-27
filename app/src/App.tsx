@@ -1,10 +1,11 @@
 import { useEffect, useState, type CSSProperties } from "react";
-import type { FilmState, GenerationParams } from "@server/types";
+import type { FilmStateResponse, GenerationParams } from "@server/types";
 import { api } from "./api";
 import { AudioFxPanel } from "./components/AudioFxPanel";
 import { FilmPicker } from "./components/FilmPicker";
 import { GenerationSettings } from "./components/GenerationSettings";
 import { GlobalPromptsBar } from "./components/GlobalPromptsBar";
+import { Lightbox } from "./components/Lightbox";
 import { PromptEditor } from "./components/PromptEditor";
 import { ShotCard } from "./components/ShotCard";
 import { Timeline, TIMELINE_HEIGHT } from "./components/Timeline";
@@ -21,7 +22,7 @@ const sectionStyle: CSSProperties = {
 export default function App() {
   const [films, setFilms] = useState<string[]>([]);
   const [selectedFilm, setSelectedFilm] = useState<string | null>(null);
-  const [state, setState] = useState<FilmState | null>(null);
+  const [state, setState] = useState<FilmStateResponse | null>(null);
   const [genParams, setGenParams] = useState<GenerationParams>({ duration: 6, resolution: "768P" });
 
   useEffect(() => {
@@ -64,6 +65,7 @@ export default function App() {
   return (
     <>
       <TopBar />
+      <Lightbox />
       <main
         style={{
           padding: "1.5rem",
@@ -154,8 +156,11 @@ export default function App() {
             state={state}
             onReorder={(clipIds) => api.reorderTimeline(selectedFilm, clipIds).then(setState)}
             onRemoveClip={(clipId) => api.removeFromTimeline(selectedFilm, clipId).then(setState)}
-            onUpdateSoundtrackIn={(inSec) => api.updateSoundtrack(selectedFilm, inSec).then(setState)}
+            onToggleClipMute={(clipId, muted) => api.updateTimelineClip(selectedFilm, clipId, { muted }).then(setState)}
+            onSelectSoundtrack={(filename) => api.updateSoundtrack(selectedFilm, { filename }).then(setState)}
+            onUpdateSoundtrackIn={(inSec) => api.updateSoundtrack(selectedFilm, { inSec }).then(setState)}
             onExport={() => api.exportFilm(selectedFilm)}
+            onPreview={() => api.previewFilm(selectedFilm)}
           />
         )}
       </main>

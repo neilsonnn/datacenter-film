@@ -40,6 +40,8 @@ export interface TimelineClip {
   id: string;
   shotFilename: string;
   generationId: string;
+  /** Clip's own embedded audio is on by default; set true to exclude it from the mix. */
+  muted: boolean;
 }
 
 export interface Soundtrack {
@@ -52,6 +54,8 @@ export interface AudioFx {
   reverb: number;
   /** Cutoff frequency in Hz, or null to disable the low-pass filter */
   lowpassHz: number | null;
+  /** false (default): applies to the whole mix (clips + soundtrack). true: clip audio only, soundtrack passes through untouched. */
+  clipsOnly: boolean;
 }
 
 export interface FilmState {
@@ -60,4 +64,10 @@ export interface FilmState {
   timeline: TimelineClip[];
   soundtrack: Soundtrack | null;
   audioFx: AudioFx;
+}
+
+/** What the API actually returns: persisted FilmState plus live-scanned extras. */
+export interface FilmStateResponse extends FilmState {
+  /** Every audio file currently sitting in the film's folder, for the soundtrack picker. */
+  audioFiles: string[];
 }

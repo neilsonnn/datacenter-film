@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import * as Checkbox from "@radix-ui/react-checkbox";
 import type { GenerationParams, PromptDef, ShotState, TimelineClip } from "@server/types";
 import { Carousel } from "./Carousel";
+import { hoverableMedia } from "../lightbox";
 
 const MEDIA_WIDTH = 400;
 const MEDIA_HEIGHT = 225; // 16:9
@@ -213,6 +214,7 @@ export function ShotCard({
           <img
             src={`/films/${film}/${shot.filename}`}
             alt={shot.filename}
+            {...hoverableMedia({ kind: "image", src: `/films/${film}/${shot.filename}` })}
             style={{
               width: MEDIA_WIDTH,
               height: MEDIA_HEIGHT,

@@ -3,7 +3,7 @@ import type { GenerationParams } from "./types";
 
 fal.config({ credentials: process.env.FAL_KEY });
 
-const MODEL = "minimax/h3-max/image-to-video";
+export const MODEL = "minimax/h3-max/image-to-video";
 
 export async function uploadImage(filePath: string): Promise<string> {
   const file = Bun.file(filePath);

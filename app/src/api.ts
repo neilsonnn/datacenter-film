@@ -44,4 +44,10 @@ export const api = {
       method: "POST",
       body: JSON.stringify(params),
     }),
+
+  deleteGeneration: (film: string, filename: string, generationId: string) =>
+    req<FilmState>(
+      `/api/films/${film}/shots/${encodeURIComponent(filename)}/generations/${generationId}`,
+      { method: "DELETE" },
+    ),
 };

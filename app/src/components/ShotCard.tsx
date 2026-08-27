@@ -1,28 +1,48 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import * as Checkbox from "@radix-ui/react-checkbox";
 import type { GenerationParams, PromptDef, ShotState } from "@server/types";
 import { Carousel } from "./Carousel";
+
+const MEDIA_WIDTH = 400;
+const MEDIA_HEIGHT = 225; // 16:9
+const PROMPT_COL_WIDTH = 260;
+
+function randomSeed(): number {
+  return Math.floor(Math.random() * 1_000_000);
+}
 
 export function ShotCard({
   film,
   shot,
   prompts,
+  genParams,
   onUpdateShot,
   onGenerate,
+  onDeleteGeneration,
 }: {
   film: string;
   shot: ShotState;
   prompts: PromptDef[];
+  genParams: GenerationParams;
   onUpdateShot: (filename: string, patch: { selectedPromptIds?: string[]; customText?: string }) => void;
-  onGenerate: (filename: string, params: GenerationParams) => void;
+  onGenerate: (filename: string, params: GenerationParams) => Promise<void>;
+  onDeleteGeneration: (filename: string, generationId: string) => void;
 }) {
   const [customText, setCustomText] = useState(shot.customText);
-  const [duration, setDuration] = useState(6);
-  const [resolution, setResolution] = useState<"480P" | "768P">("768P");
-  const [seed, setSeed] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [rolling, setRolling] = useState(false);
+  const [index, setIndex] = useState(Math.max(0, shot.generations.length - 1));
+  const [showJson, setShowJson] = useState(false);
+
+  useEffect(() => {
+    // Only clamp downward (e.g. after a delete) — never jump forward just because a
+    // background generation (Roll 4 / Submit) finished and grew the array.
+    setIndex((i) => Math.min(i, Math.max(0, shot.generations.length - 1)));
+  }, [shot.generations.length]);
 
   const nonGlobalPrompts = prompts.filter((p) => !p.isGlobal);
+  const hasGenerations = shot.generations.length > 0;
+  const gen = hasGenerations ? shot.generations[Math.max(0, Math.min(index, shot.generations.length - 1))] : null;
 
   function toggleSelected(id: string, checked: boolean) {
     const next = checked
@@ -34,77 +54,150 @@ export function ShotCard({
   async function handleSubmit() {
     setSubmitting(true);
     try {
-      await onGenerate(shot.filename, {
-        duration,
-        resolution,
-        seed: seed.trim() ? Number(seed) : undefined,
-      });
+      await onGenerate(shot.filename, genParams);
     } finally {
       setSubmitting(false);
     }
   }
 
+  async function handleRoll4() {
+    setRolling(true);
+    try {
+      await Promise.all(
+        Array.from({ length: 4 }, () => onGenerate(shot.filename, { ...genParams, seed: randomSeed() })),
+      );
+    } finally {
+      setRolling(false);
+    }
+  }
+
   return (
-    <div style={{ border: "1px solid #ccc", padding: "0.75rem", marginBottom: "1rem" }}>
-      <h3>{shot.filename}</h3>
-      <img src={`/films/${film}/${shot.filename}`} alt={shot.filename} style={{ maxWidth: "100%", maxHeight: 200 }} />
+    <div style={{ border: "1px solid #000", borderRadius: 0, padding: "0.75rem", marginBottom: "1rem" }}>
+      <div style={{ display: "flex", gap: "1rem", alignItems: "stretch", justifyContent: "space-between" }}>
+        <div
+          style={{
+            width: PROMPT_COL_WIDTH,
+            flexShrink: 0,
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "space-between",
+          }}
+        >
+          <div>
+            <h3
+              style={{
+                marginTop: 0,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {shot.filename}
+            </h3>
 
-      {nonGlobalPrompts.length > 0 && (
-        <fieldset style={{ margin: "0.5rem 0" }}>
-          <legend>prompts</legend>
-          {nonGlobalPrompts.map((p) => (
-            <label key={p.id} style={{ display: "block" }}>
-              <Checkbox.Root
-                checked={shot.selectedPromptIds.includes(p.id)}
-                onCheckedChange={(checked) => toggleSelected(p.id, checked === true)}
-                style={{ marginRight: "0.4rem" }}
+            {nonGlobalPrompts.length > 0 && (
+              <fieldset style={{ margin: "0 0 0.5rem" }}>
+                <legend>prompts</legend>
+                {nonGlobalPrompts.map((p) => (
+                  <label key={p.id} style={{ display: "block" }}>
+                    <Checkbox.Root
+                      checked={shot.selectedPromptIds.includes(p.id)}
+                      onCheckedChange={(checked) => toggleSelected(p.id, checked === true)}
+                      style={{ marginRight: "0.4rem" }}
+                    >
+                      <Checkbox.Indicator>x</Checkbox.Indicator>
+                    </Checkbox.Root>
+                    {p.text}
+                  </label>
+                ))}
+              </fieldset>
+            )}
+
+            <textarea
+              placeholder="custom prompt for this shot"
+              rows={4}
+              style={{ width: "100%", boxSizing: "border-box" }}
+              value={customText}
+              onChange={(e) => setCustomText(e.target.value)}
+              onBlur={() => onUpdateShot(shot.filename, { customText })}
+            />
+          </div>
+
+          <div>
+            <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.5rem" }}>
+              <button onClick={handleSubmit} disabled={submitting || rolling}>
+                {submitting ? "submitting..." : "Submit"}
+              </button>
+              <button onClick={handleRoll4} disabled={submitting || rolling}>
+                {rolling ? "rolling..." : "Roll 4"}
+              </button>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <button disabled={!hasGenerations || index <= 0} onClick={() => setIndex((i) => i - 1)}>
+                &larr;
+              </button>
+              <span>{hasGenerations ? `${index + 1} / ${shot.generations.length}` : "0 / 0"}</span>
+              <button
+                disabled={!hasGenerations || index >= shot.generations.length - 1}
+                onClick={() => setIndex((i) => i + 1)}
               >
-                <Checkbox.Indicator>x</Checkbox.Indicator>
-              </Checkbox.Root>
-              {p.text}
-            </label>
-          ))}
-        </fieldset>
-      )}
+                &rarr;
+              </button>
+              <button disabled={!gen} onClick={() => setShowJson((v) => !v)} title="view output JSON">
+                {"{}"}
+              </button>
+              <button
+                disabled={!gen}
+                onClick={() => gen && onDeleteGeneration(shot.filename, gen.id)}
+                title="delete this generation"
+              >
+                x
+              </button>
+            </div>
+          </div>
+        </div>
 
-      <textarea
-        placeholder="custom prompt for this shot"
-        rows={2}
-        style={{ width: "100%" }}
-        value={customText}
-        onChange={(e) => setCustomText(e.target.value)}
-        onBlur={() => onUpdateShot(shot.filename, { customText })}
-      />
+        {showJson && gen && (
+          <pre
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              zIndex: 1000,
+              margin: 0,
+              background: "#fff",
+              border: "1px solid #000",
+              borderRadius: 0,
+              padding: "0.75rem",
+              maxWidth: "40vw",
+              maxHeight: "60vh",
+              overflow: "auto",
+              fontSize: "0.8rem",
+              whiteSpace: "pre-wrap",
+            }}
+          >
+            {JSON.stringify(gen, null, 2)}
+          </pre>
+        )}
 
-      <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", margin: "0.5rem 0" }}>
-        <label>
-          duration{" "}
-          <input
-            type="number"
-            min={5}
-            max={15}
-            value={duration}
-            onChange={(e) => setDuration(Number(e.target.value))}
-            style={{ width: 50 }}
+        <div style={{ display: "flex", gap: "0.5rem", flexShrink: 0 }}>
+          <img
+            src={`/films/${film}/${shot.filename}`}
+            alt={shot.filename}
+            style={{
+              width: MEDIA_WIDTH,
+              height: MEDIA_HEIGHT,
+              objectFit: "cover",
+              flexShrink: 0,
+              border: "1px solid #000",
+              boxSizing: "border-box",
+            }}
           />
-        </label>
-        <label>
-          resolution{" "}
-          <select value={resolution} onChange={(e) => setResolution(e.target.value as "480P" | "768P")}>
-            <option value="480P">480P</option>
-            <option value="768P">768P</option>
-          </select>
-        </label>
-        <label>
-          seed{" "}
-          <input type="number" value={seed} onChange={(e) => setSeed(e.target.value)} style={{ width: 70 }} />
-        </label>
-        <button onClick={handleSubmit} disabled={submitting}>
-          {submitting ? "submitting..." : "Submit"}
-        </button>
-      </div>
 
-      <Carousel film={film} generations={shot.generations} />
+          <Carousel film={film} generation={gen} width={MEDIA_WIDTH} height={MEDIA_HEIGHT} />
+        </div>
+      </div>
     </div>
   );
 }

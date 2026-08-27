@@ -14,7 +14,18 @@ function stateFile(film: string): string {
 }
 
 function emptyState(): FilmState {
-  return { prompts: [], shots: {} };
+  return {
+    prompts: [
+      {
+        id: "seed-35mm",
+        text: "shot on 35mm film, cinematic grain, shallow depth of field",
+        isGlobal: true,
+        globalEnabled: true,
+        createdAt: new Date().toISOString(),
+      },
+    ],
+    shots: {},
+  };
 }
 
 const cache = new Map<string, FilmState>();

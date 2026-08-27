@@ -15,7 +15,7 @@ export function GlobalPromptsBar({
   }
 
   return (
-    <ul style={{ display: "flex", flexWrap: "wrap", gap: "1rem", listStyle: "none", padding: 0 }}>
+    <ul style={{ display: "flex", flexDirection: "column", gap: "0.5rem", listStyle: "none", padding: 0 }}>
       {globals.map((p) => (
         <li key={p.id} style={{ display: "flex", alignItems: "center", gap: "0.4rem", border: "1px solid #ccc", padding: "0.3rem 0.6rem" }}>
           <Switch.Root

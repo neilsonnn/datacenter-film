@@ -1,3 +1,4 @@
+import { unlink } from "node:fs/promises";
 import path from "node:path";
 import { nanoid } from "nanoid";
 import { listFilms } from "./scanner";
@@ -7,7 +8,7 @@ import {
   getMergedFilmState,
   mutateFilmState,
 } from "./state";
-import { checkStatus, downloadVideo, fetchResult, submitGeneration, uploadImage } from "./fal";
+import { checkStatus, downloadVideo, fetchResult, MODEL, submitGeneration, uploadImage } from "./fal";
 import type { Generation, GenerationParams, PromptDef, ShotState } from "./types";
 
 const PORT = Number(process.env.PORT) || 8787;
@@ -150,6 +151,26 @@ const server = Bun.serve({
       },
     },
 
+    "/api/films/:film/shots/:filename/generations/:generationId": {
+      DELETE: async (req) => {
+        const { film, filename, generationId } = req.params;
+        const state = await getMergedFilmState(film);
+        const gen = state.shots[filename]?.generations.find((g) => g.id === generationId);
+        if (gen?.videoFilename) {
+          await unlink(path.join(getFilmDir(film), gen.videoFilename)).catch(() => {});
+        }
+        if (gen) {
+          const stem = path.parse(filename).name;
+          await unlink(path.join(getFilmDir(film), `.${stem}.${gen.id}.json`)).catch(() => {});
+        }
+        const newState = await mutateFilmState(film, (s) => {
+          const shot = s.shots[filename];
+          if (shot) shot.generations = shot.generations.filter((g) => g.id !== generationId);
+        });
+        return json(newState);
+      },
+    },
+
     "/films/:film/:filename": {
       GET: async (req) => {
         const file = Bun.file(path.join(getFilmDir(req.params.film), req.params.filename));
@@ -196,6 +217,22 @@ async function pollGenerations(): Promise<void> {
             const stem = path.parse(shot.filename).name;
             const videoFilename = `.${stem}.${generation.id}.mp4`;
             await Bun.write(path.join(getFilmDir(film), videoFilename), bytes);
+
+            const metadata = {
+              id: generation.id,
+              requestId: generation.requestId,
+              model: MODEL,
+              sourceImage: shot.filename,
+              finalPrompt: generation.finalPrompt,
+              params: generation.params,
+              createdAt: generation.createdAt,
+              completedAt: new Date().toISOString(),
+            };
+            await Bun.write(
+              path.join(getFilmDir(film), `.${stem}.${generation.id}.json`),
+              JSON.stringify(metadata, null, 2),
+            );
+
             await mutateFilmState(film, (s) => {
               const g = s.shots[shot.filename]?.generations.find((gen) => gen.id === generation.id);
               if (g) {

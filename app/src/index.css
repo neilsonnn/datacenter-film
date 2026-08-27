@@ -3,5 +3,31 @@
 @tailwind utilities;
 
 body {
-  font-family: system-ui, sans-serif;
+  font-family: serif;
+}
+
+input,
+textarea,
+select {
+  border: 1px solid #ccc;
+  border-radius: 0;
+  padding: 0.25rem;
+  box-sizing: border-box;
+}
+
+textarea {
+  resize: none;
+  overflow-y: auto;
+}
+
+button {
+  border: 1px solid #ccc;
+  border-radius: 0;
+  padding: 0.25rem 0.5rem;
+  background: none;
+  font-family: inherit;
+}
+
+button:hover:not(:disabled) {
+  border-color: #000;
 }

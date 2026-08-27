@@ -2,6 +2,9 @@
 
 Films from the infiniband
 
+<img width="640" height="360" alt="datacenter-film-1" src="https://github.com/user-attachments/assets/629168b2-7586-4c4e-8354-3613f70fddfb" />
+
+
 ## Setup
 
 ```

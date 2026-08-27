@@ -1,7 +1,8 @@
 import { useState, type DragEvent } from "react";
 import type { FilmStateResponse } from "@server/types";
 import { AudioFxPanel } from "./AudioFxPanel";
-import { hoverableMedia } from "../lightbox";
+import { scrollToShot } from "./ShotNav";
+import { hoverableMedia, openLightbox } from "../lightbox";
 
 export const TIMELINE_HEIGHT = 190;
 
@@ -9,13 +10,6 @@ function formatTime(sec: number): string {
   const m = Math.floor(sec / 60);
   const s = Math.floor(sec % 60);
   return `${m}:${String(s).padStart(2, "0")}`;
-}
-
-function scrollToShot(shotFilename: string) {
-  document.getElementById(`shot-${encodeURIComponent(shotFilename)}`)?.scrollIntoView({
-    behavior: "smooth",
-    block: "center",
-  });
 }
 
 export function Timeline({
@@ -92,10 +86,13 @@ export function Timeline({
   async function handlePreview() {
     setPreviewing(true);
     setPreviewError(null);
+    setPreviewSrc(null); // clear the stale preview immediately, don't wait for the new render
     try {
       const result = await onPreview();
       // preview.mp4 is overwritten in place each time — cache-bust so the <video> reloads the new bytes.
-      setPreviewSrc(`/films/${film}/${result.filename}?t=${Date.now()}`);
+      const src = `/films/${film}/${result.filename}?t=${Date.now()}`;
+      setPreviewSrc(src);
+      openLightbox({ kind: "video", src });
     } catch (err) {
       setPreviewError(err instanceof Error ? err.message : String(err));
     } finally {

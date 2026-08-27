@@ -10,6 +10,27 @@ export function getHoveredMedia(): HoveredMedia {
   return current;
 }
 
+// Lets any component (not just the spacebar handler) open/close the lightbox directly,
+// e.g. jumping straight to it once a preview render finishes.
+type OpenListener = (media: HoveredMedia) => void;
+let openMedia: HoveredMedia = null;
+const openListeners = new Set<OpenListener>();
+
+export function openLightbox(media: HoveredMedia): void {
+  openMedia = media;
+  openListeners.forEach((l) => l(openMedia));
+}
+
+export function closeLightbox(): void {
+  openMedia = null;
+  openListeners.forEach((l) => l(openMedia));
+}
+
+export function subscribeLightbox(listener: OpenListener): () => void {
+  openListeners.add(listener);
+  return () => openListeners.delete(listener);
+}
+
 /**
  * Spread onto an element to make it hover-trackable for the spacebar lightbox.
  *

@@ -6,6 +6,7 @@ import { GenerationSettings } from "./components/GenerationSettings";
 import { Lightbox } from "./components/Lightbox";
 import { PromptEditor } from "./components/PromptEditor";
 import { ShotCard } from "./components/ShotCard";
+import { ShotNav } from "./components/ShotNav";
 import { Timeline, TIMELINE_HEIGHT } from "./components/Timeline";
 import { TopBar, TOP_BAR_HEIGHT } from "./components/TopBar";
 
@@ -24,6 +25,7 @@ export default function App() {
   const [selectedFilm, setSelectedFilm] = useState<string | null>(null);
   const [state, setState] = useState<FilmStateResponse | null>(null);
   const [genParams, setGenParams] = useState<GenerationParams>({ duration: 6, resolution: "768P" });
+  const sortedShots = state ? Object.values(state.shots).sort((a, b) => a.filename.localeCompare(b.filename)) : [];
 
   useEffect(() => {
     const tick = () =>
@@ -76,7 +78,7 @@ export default function App() {
         }}
       >
         {selectedFilm && state && (
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "1.5rem" }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: "1.5rem" }}>
           <aside
             style={{
               display: "flex",
@@ -108,40 +110,51 @@ export default function App() {
             </section>
           </aside>
 
-          <section>
-            {Object.keys(state.shots).length === 0 && (
+          <section style={{ flexShrink: 0 }}>
+            {sortedShots.length === 0 && (
               <p style={{ color: "#666" }}>
                 No shots yet. Drag images into <code>films/{selectedFilm}/</code>.
               </p>
             )}
-            {Object.values(state.shots)
-              .sort((a, b) => a.filename.localeCompare(b.filename))
-              .map((shot) => (
-                <ShotCard
-                  key={shot.filename}
-                  film={selectedFilm}
-                  shot={shot}
-                  genParams={genParams}
-                  timeline={state.timeline}
-                  onUpdateShot={(filename, patch) => api.updateShot(selectedFilm, filename, patch).then(setState)}
-                  onGenerate={async (filename, params: GenerationParams) => {
-                    await api.generate(selectedFilm, filename, params);
-                    setState(await api.getState(selectedFilm));
-                  }}
-                  onDeleteGeneration={(filename, generationId) =>
-                    api.deleteGeneration(selectedFilm, filename, generationId).then(setState)
-                  }
-                  onTrimGeneration={(filename, generationId, inSec, outSec) =>
-                    api.trimGeneration(selectedFilm, filename, generationId, { inSec, outSec }).then(setState)
-                  }
-                  onAddToTimeline={(shotFilename, generationId) =>
-                    api.addToTimeline(selectedFilm, shotFilename, generationId).then(setState)
-                  }
-                  onRemoveFromTimeline={(clipId) => api.removeFromTimeline(selectedFilm, clipId).then(setState)}
-                  onReveal={(filename) => api.revealShot(selectedFilm, filename)}
-                />
-              ))}
+            {sortedShots.map((shot) => (
+              <ShotCard
+                key={shot.filename}
+                film={selectedFilm}
+                shot={shot}
+                genParams={genParams}
+                timeline={state.timeline}
+                onUpdateShot={(filename, patch) => api.updateShot(selectedFilm, filename, patch).then(setState)}
+                onGenerate={async (filename, params: GenerationParams) => {
+                  await api.generate(selectedFilm, filename, params);
+                  setState(await api.getState(selectedFilm));
+                }}
+                onDeleteGeneration={(filename, generationId) =>
+                  api.deleteGeneration(selectedFilm, filename, generationId).then(setState)
+                }
+                onTrimGeneration={(filename, generationId, inSec, outSec) =>
+                  api.trimGeneration(selectedFilm, filename, generationId, { inSec, outSec }).then(setState)
+                }
+                onAddToTimeline={(shotFilename, generationId) =>
+                  api.addToTimeline(selectedFilm, shotFilename, generationId).then(setState)
+                }
+                onRemoveFromTimeline={(clipId) => api.removeFromTimeline(selectedFilm, clipId).then(setState)}
+                onReveal={(filename) => api.revealShot(selectedFilm, filename)}
+              />
+            ))}
           </section>
+
+          <div
+            style={{
+              flexShrink: 0,
+              marginLeft: "auto",
+              position: "sticky",
+              top: TOP_BAR_HEIGHT + CONTENT_PADDING,
+              maxHeight: `calc(100vh - ${TOP_BAR_HEIGHT + CONTENT_PADDING}px - ${TIMELINE_HEIGHT}px)`,
+              overflowY: "auto",
+            }}
+          >
+            <ShotNav film={selectedFilm} shots={sortedShots} />
+          </div>
           </div>
         )}
 

@@ -2,8 +2,11 @@ import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { getFilmDir, getMergedFilmState, repoRoot } from "./state";
 
-// Native output size of fal's 768P setting — matching it exactly means the scale/pad
-// step below is a no-op for real clips, instead of letterboxing them into 16:9.
+// Target canvas every clip gets cropped-to-fill into. fal's "768P" setting doesn't
+// produce a perfectly fixed size across every generation (observed both 1440x704 and
+// 1440x736 from real clips) — so instead of padding to fit (which bars any clip whose
+// exact aspect doesn't match), we scale up to cover this box and crop the centered
+// excess, the same object-fit:cover treatment used everywhere else in the app.
 const CLIP_WIDTH = 1440;
 const CLIP_HEIGHT = 704;
 
@@ -28,6 +31,13 @@ function buildAudioFilterChain(audioFx: { reverb: number; lowpassHz: number | nu
   if (audioFx.lowpassHz) filters.push(`lowpass=f=${audioFx.lowpassHz}`);
   if (audioFx.reverb > 0) filters.push(reverbFilter(audioFx.reverb));
   return filters.length > 0 ? filters.join(",") : null;
+}
+
+// Always fade the final mix to silence over the last few seconds, regardless of soundtrack/FX settings.
+function fadeOutFilter(totalDuration: number): string {
+  const fadeDuration = Math.min(3, totalDuration / 2);
+  const fadeStart = Math.max(0, totalDuration - fadeDuration);
+  return `afade=t=out:st=${fadeStart}:d=${fadeDuration}`;
 }
 
 const AMIX = "amix=inputs=2:duration=first:dropout_transition=0";
@@ -68,7 +78,7 @@ export async function exportFilm(
         "-to",
         String(outSec),
         "-vf",
-        `scale=${CLIP_WIDTH}:${CLIP_HEIGHT}:force_original_aspect_ratio=decrease,pad=${CLIP_WIDTH}:${CLIP_HEIGHT}:(ow-iw)/2:(oh-ih)/2,setsar=1`,
+        `scale=${CLIP_WIDTH}:${CLIP_HEIGHT}:force_original_aspect_ratio=increase,crop=${CLIP_WIDTH}:${CLIP_HEIGHT}:(iw-${CLIP_WIDTH})/2:(ih-${CLIP_HEIGHT})/2,setsar=1`,
         "-r",
         "30",
         // Muted clips still carry a (silent) audio stream, so concat below sees a
@@ -115,39 +125,38 @@ export async function exportFilm(
     }
 
     const audioFilterChain = buildAudioFilterChain(state.audioFx);
+    const fadeFilter = fadeOutFilter(totalVideoDuration);
 
     if (!state.soundtrack) {
       // Only bus is the clips' own (already muted-where-requested) audio.
-      if (!audioFilterChain) {
-        await runFfmpeg(["-y", "-i", concatVideoPath, "-c", "copy", "-t", String(totalVideoDuration), outputPath]);
-      } else {
-        await runFfmpeg([
-          "-y",
-          "-i",
-          concatVideoPath,
-          "-af",
-          audioFilterChain,
-          "-c:v",
-          "copy",
-          "-c:a",
-          "aac",
-          "-t",
-          String(totalVideoDuration),
-          outputPath,
-        ]);
-      }
+      const chain = audioFilterChain ? `${audioFilterChain},${fadeFilter}` : fadeFilter;
+      await runFfmpeg([
+        "-y",
+        "-i",
+        concatVideoPath,
+        "-af",
+        chain,
+        "-c:v",
+        "copy",
+        "-c:a",
+        "aac",
+        "-t",
+        String(totalVideoDuration),
+        outputPath,
+      ]);
     } else {
       // Mix clip audio (0:a) with the soundtrack (1:a) — soundtrack no longer replaces
       // clip audio, it plays alongside it. FX either hits the combined mix, or just the
-      // clip bus beforehand, depending on audioFx.clipsOnly.
+      // clip bus beforehand, depending on audioFx.clipsOnly. The fade-out always applies
+      // to the final combined result, regardless of scope.
       const soundtrackPath = path.join(filmDir, state.soundtrack.filename);
       let filterComplex: string;
       if (!audioFilterChain) {
-        filterComplex = `[0:a][1:a]${AMIX}[aout]`;
+        filterComplex = `[0:a][1:a]${AMIX}[mixed];[mixed]${fadeFilter}[aout]`;
       } else if (state.audioFx.clipsOnly) {
-        filterComplex = `[0:a]${audioFilterChain}[a0fx];[a0fx][1:a]${AMIX}[aout]`;
+        filterComplex = `[0:a]${audioFilterChain}[a0fx];[a0fx][1:a]${AMIX}[mixed];[mixed]${fadeFilter}[aout]`;
       } else {
-        filterComplex = `[0:a][1:a]${AMIX}[mixed];[mixed]${audioFilterChain}[aout]`;
+        filterComplex = `[0:a][1:a]${AMIX}[mixed];[mixed]${audioFilterChain},${fadeFilter}[aout]`;
       }
 
       await runFfmpeg([

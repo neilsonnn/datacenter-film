@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
-import { getHoveredMedia, type HoveredMedia } from "../lightbox";
+import { closeLightbox, getHoveredMedia, openLightbox, subscribeLightbox, type HoveredMedia } from "../lightbox";
 
 export function Lightbox() {
   const [media, setMedia] = useState<HoveredMedia>(null);
+
+  useEffect(() => subscribeLightbox(setMedia), []);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -10,17 +12,18 @@ export function Lightbox() {
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
       e.preventDefault();
-      setMedia((current) => (current ? null : getHoveredMedia()));
+      if (media) closeLightbox();
+      else openLightbox(getHoveredMedia());
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [media]);
 
   if (!media) return null;
 
   return (
     <div
-      onClick={() => setMedia(null)}
+      onClick={() => closeLightbox()}
       style={{
         position: "fixed",
         inset: 0,

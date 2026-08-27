@@ -1,7 +1,7 @@
 import type { AudioFx } from "@server/types";
 
 const row = { display: "flex", alignItems: "center", gap: "0.3rem", marginTop: "0.15rem" } as const;
-const label = { flexShrink: 0, width: 48, whiteSpace: "nowrap", overflow: "hidden" } as const;
+const label = { flexShrink: 0, width: 62, whiteSpace: "nowrap", overflow: "hidden" } as const;
 
 export function AudioFxPanel({
   audioFx,
@@ -42,7 +42,7 @@ export function AudioFxPanel({
 
       <div style={row}>
         <span style={label} title="apply FX to clip audio only, not the soundtrack">
-          clips
+          clips only
         </span>
         <input
           type="checkbox"

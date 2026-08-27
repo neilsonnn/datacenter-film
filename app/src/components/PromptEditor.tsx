@@ -32,7 +32,7 @@ export function PromptEditor({
 
   return (
     <div>
-      <h2>Prompt Editor</h2>
+      <h2>Actions</h2>
       <ul style={{ listStyle: "none", padding: 0, maxHeight: 320, overflowY: "auto" }}>
         {prompts.map((p) => (
           <li key={p.id} style={{ display: "flex", alignItems: "center", gap: "0.3rem", borderBottom: "1px solid #ddd", padding: "0.3rem 0" }}>

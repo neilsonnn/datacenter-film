@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { GenerationParams, ShotState, TimelineClip } from "@server/types";
 import { Carousel } from "./Carousel";
 import { hoverableMedia } from "../lightbox";
@@ -41,12 +41,28 @@ export function ShotCard({
   const [rolling, setRolling] = useState(false);
   const [index, setIndex] = useState(Math.max(0, shot.generations.length - 1));
   const [showJson, setShowJson] = useState(false);
+  const prevStatusesRef = useRef<Map<string, string>>(new Map());
 
   useEffect(() => {
-    // Only clamp downward (e.g. after a delete) — never jump forward just because a
-    // background generation (Roll 4 / Submit) finished and grew the array.
-    setIndex((i) => Math.min(i, Math.max(0, shot.generations.length - 1)));
-  }, [shot.generations.length]);
+    const prevStatuses = prevStatusesRef.current;
+    let justCompletedIndex: number | null = null;
+    shot.generations.forEach((g, i) => {
+      const prevStatus = prevStatuses.get(g.id);
+      if (prevStatus && prevStatus !== "completed" && g.status === "completed") {
+        justCompletedIndex = i;
+      }
+    });
+    prevStatusesRef.current = new Map(shot.generations.map((g) => [g.id, g.status]));
+
+    if (justCompletedIndex !== null) {
+      // A generation we were watching just finished rendering — jump to it.
+      setIndex(justCompletedIndex);
+    } else {
+      // Otherwise only clamp downward (e.g. after a delete) — never jump forward just
+      // because the array grew (a fresh Roll 4/Submit queued item shouldn't yank focus).
+      setIndex((i) => Math.min(i, Math.max(0, shot.generations.length - 1)));
+    }
+  }, [shot.generations]);
 
   const hasGenerations = shot.generations.length > 0;
   const gen = hasGenerations ? shot.generations[Math.max(0, Math.min(index, shot.generations.length - 1))] : null;
@@ -117,7 +133,7 @@ export function ShotCard({
             </div>
 
             <textarea
-              placeholder="custom prompt for this shot"
+              placeholder="custom action for this shot"
               rows={4}
               style={{ width: "100%", boxSizing: "border-box" }}
               value={customText}

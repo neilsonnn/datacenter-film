@@ -1,6 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
-import type { FilmState, FilmStateResponse, ShotState, TimelineClip } from "./types";
+import type { FilmState, FilmStateResponse, PromptDef, ShotState, TimelineClip } from "./types";
 import { listAudioFiles, listShotImages } from "./scanner";
 
 const FILMS_DIR = path.resolve(import.meta.dir, "..", "..", "films");
@@ -19,8 +19,7 @@ function emptyState(): FilmState {
       {
         id: "seed-35mm",
         text: "shot on 35mm film, cinematic grain, shallow depth of field",
-        isGlobal: true,
-        globalEnabled: true,
+        enabled: true,
         createdAt: new Date().toISOString(),
       },
     ],
@@ -42,8 +41,17 @@ async function readStateFile(film: string): Promise<FilmState> {
     const timeline: TimelineClip[] = Array.isArray(parsed.timeline)
       ? parsed.timeline.map((c: TimelineClip) => ({ ...c, muted: c.muted ?? false }))
       : [];
+    // Migrate old {isGlobal, globalEnabled} prompts into the single `enabled` flag.
+    const prompts: PromptDef[] = Array.isArray(parsed.prompts)
+      ? parsed.prompts.map((p: PromptDef & { isGlobal?: boolean; globalEnabled?: boolean }) => ({
+          id: p.id,
+          text: p.text,
+          createdAt: p.createdAt,
+          enabled: p.enabled ?? (p.isGlobal ? (p.globalEnabled ?? true) : false),
+        }))
+      : [];
     return {
-      prompts: Array.isArray(parsed.prompts) ? parsed.prompts : [],
+      prompts,
       shots: parsed.shots && typeof parsed.shots === "object" ? parsed.shots : {},
       timeline,
       soundtrack: parsed.soundtrack ?? null,
@@ -104,7 +112,6 @@ async function mergeDiskIntoState(film: string, state: FilmState): Promise<{ aud
     if (!state.shots[filename]) {
       state.shots[filename] = {
         filename,
-        selectedPromptIds: [],
         customText: "",
         generations: [],
       };

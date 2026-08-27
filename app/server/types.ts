@@ -1,8 +1,8 @@
 export interface PromptDef {
   id: string;
   text: string;
-  isGlobal: boolean;
-  globalEnabled: boolean;
+  /** Every prompt is global; enabled ones are stitched into every shot's generation. */
+  enabled: boolean;
   createdAt: string;
 }
 
@@ -31,7 +31,6 @@ export interface Generation {
 
 export interface ShotState {
   filename: string;
-  selectedPromptIds: string[];
   customText: string;
   generations: Generation[];
 }

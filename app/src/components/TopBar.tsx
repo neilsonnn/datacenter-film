@@ -1,3 +1,5 @@
+export const TOP_BAR_HEIGHT = 56;
+
 export function TopBar() {
   return (
     <header
@@ -5,8 +7,14 @@ export function TopBar() {
         display: "flex",
         justifyContent: "space-between",
         alignItems: "center",
-        padding: "1rem 1.5rem",
+        height: TOP_BAR_HEIGHT,
+        boxSizing: "border-box",
+        padding: "0 1.5rem",
         borderBottom: "1px solid #000",
+        position: "sticky",
+        top: 0,
+        background: "#fff",
+        zIndex: 1000,
       }}
     >
       <span style={{ fontWeight: "bold" }}>datacenter-film</span>

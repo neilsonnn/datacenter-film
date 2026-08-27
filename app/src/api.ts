@@ -14,17 +14,13 @@ export const api = {
 
   getState: (film: string) => req<FilmStateResponse>(`/api/films/${film}/state`),
 
-  addPrompt: (film: string, text: string, isGlobal: boolean) =>
+  addPrompt: (film: string, text: string, enabled: boolean) =>
     req<FilmStateResponse>(`/api/films/${film}/prompts`, {
       method: "POST",
-      body: JSON.stringify({ text, isGlobal }),
+      body: JSON.stringify({ text, enabled }),
     }),
 
-  updatePrompt: (
-    film: string,
-    id: string,
-    patch: { text?: string; isGlobal?: boolean; globalEnabled?: boolean },
-  ) =>
+  updatePrompt: (film: string, id: string, patch: { text?: string; enabled?: boolean }) =>
     req<FilmStateResponse>(`/api/films/${film}/prompts/${id}`, {
       method: "PATCH",
       body: JSON.stringify(patch),
@@ -33,11 +29,14 @@ export const api = {
   deletePrompt: (film: string, id: string) =>
     req<FilmStateResponse>(`/api/films/${film}/prompts/${id}`, { method: "DELETE" }),
 
-  updateShot: (film: string, filename: string, patch: { selectedPromptIds?: string[]; customText?: string }) =>
+  updateShot: (film: string, filename: string, patch: { customText?: string }) =>
     req<FilmStateResponse>(`/api/films/${film}/shots/${encodeURIComponent(filename)}`, {
       method: "PATCH",
       body: JSON.stringify(patch),
     }),
+
+  revealShot: (film: string, filename: string) =>
+    req<{ ok: true }>(`/api/films/${film}/shots/${encodeURIComponent(filename)}/reveal`, { method: "POST" }),
 
   generate: (film: string, filename: string, params: GenerationParams) =>
     req<Generation>(`/api/films/${film}/shots/${encodeURIComponent(filename)}/generate`, {

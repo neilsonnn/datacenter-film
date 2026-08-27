@@ -1,5 +1,6 @@
 import { useState, type DragEvent } from "react";
 import type { FilmStateResponse } from "@server/types";
+import { AudioFxPanel } from "./AudioFxPanel";
 import { hoverableMedia } from "../lightbox";
 
 export const TIMELINE_HEIGHT = 190;
@@ -10,6 +11,13 @@ function formatTime(sec: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+function scrollToShot(shotFilename: string) {
+  document.getElementById(`shot-${encodeURIComponent(shotFilename)}`)?.scrollIntoView({
+    behavior: "smooth",
+    block: "center",
+  });
+}
+
 export function Timeline({
   film,
   state,
@@ -18,6 +26,7 @@ export function Timeline({
   onToggleClipMute,
   onSelectSoundtrack,
   onUpdateSoundtrackIn,
+  onUpdateAudioFx,
   onExport,
   onPreview,
 }: {
@@ -28,6 +37,7 @@ export function Timeline({
   onToggleClipMute: (clipId: string, muted: boolean) => void;
   onSelectSoundtrack: (filename: string | null) => void;
   onUpdateSoundtrackIn: (inSec: number) => void;
+  onUpdateAudioFx: (patch: { reverb?: number; lowpassHz?: number | null; clipsOnly?: boolean }) => void;
   onExport: () => Promise<{ filename: string; outputPath: string }>;
   onPreview: () => Promise<{ filename: string; outputPath: string }>;
 }) {
@@ -111,33 +121,11 @@ export function Timeline({
         zIndex: 500,
       }}
     >
-      <div style={{ flexShrink: 0, borderRight: "1px solid #000", paddingRight: "1rem", display: "flex", flexDirection: "column", alignItems: "center" }}>
-        {previewSrc ? (
-          <video
-            key={previewSrc}
-            src={previewSrc}
-            autoPlay
-            playsInline
-            {...hoverableMedia({ kind: "video", src: previewSrc })}
-            style={{ width: 140, height: 79, background: "#000" }}
-          />
-        ) : (
-          <div style={{ width: 140, height: 79, background: "#000", color: "#999", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.7rem" }}>
-            no preview yet
-          </div>
-        )}
-        <button onClick={handlePreview} disabled={previewing || state.timeline.length === 0} style={{ marginTop: "0.25rem", width: "100%" }}>
-          {previewing ? "rendering..." : "Preview"}
-        </button>
-        {previewError && <div style={{ fontSize: "0.65rem", color: "red", maxWidth: 140 }}>{previewError}</div>}
-      </div>
-
-      <div style={{ flexShrink: 0, borderRight: "1px solid #000", paddingRight: "1rem" }}>
-        <div style={{ fontSize: "0.8rem", marginBottom: "0.25rem" }}>soundtrack</div>
+      <div style={{ flexShrink: 0, borderRight: "1px solid #000", paddingRight: "1rem", width: 170, fontSize: "0.75rem", overflowY: "auto" }}>
         <select
           value={state.soundtrack?.filename ?? ""}
           onChange={(e) => onSelectSoundtrack(e.target.value || null)}
-          style={{ maxWidth: 140, marginBottom: "0.25rem", display: "block" }}
+          style={{ width: "100%", marginBottom: "0.25rem", display: "block" }}
         >
           <option value="">None</option>
           {state.audioFiles.map((f) => (
@@ -147,7 +135,7 @@ export function Timeline({
           ))}
         </select>
         {state.soundtrack && (
-          <label style={{ fontSize: "0.75rem" }}>
+          <label style={{ display: "block", marginBottom: "0.25rem" }}>
             in (s){" "}
             <input
               type="number"
@@ -158,6 +146,7 @@ export function Timeline({
             />
           </label>
         )}
+        <AudioFxPanel audioFx={state.audioFx} onChange={onUpdateAudioFx} />
       </div>
 
       <div style={{ flex: 1, minWidth: 0, display: "flex", gap: "0.5rem", overflowX: "auto" }}>
@@ -177,6 +166,7 @@ export function Timeline({
               onDragStart={(e) => handleDragStart(e, i)}
               onDragOver={handleDragOver}
               onDrop={(e) => handleDrop(e, i)}
+              onClick={() => scrollToShot(clip.shotFilename)}
               style={{
                 flexShrink: 0,
                 width: 110,
@@ -188,37 +178,35 @@ export function Timeline({
                 background: "#fff",
               }}
             >
-              <button
-                onClick={() => onRemoveClip(clip.id)}
-                title="remove from timeline"
-                style={{
-                  position: "absolute",
-                  top: 2,
-                  right: 2,
-                  padding: "0 0.25rem",
-                  fontSize: "0.7rem",
-                  lineHeight: 1.4,
-                }}
-              >
-                x
-              </button>
-              <button
-                onClick={() => onToggleClipMute(clip.id, !clip.muted)}
-                title={clip.muted ? "unmute this clip" : "mute this clip"}
-                style={{
-                  position: "absolute",
-                  top: 2,
-                  left: 2,
-                  padding: "0 0.25rem",
-                  fontSize: "0.7rem",
-                  lineHeight: 1.4,
-                  borderColor: clip.muted ? "#c00" : undefined,
-                  background: clip.muted ? "#ffe6e6" : undefined,
-                  color: clip.muted ? "#c00" : undefined,
-                }}
-              >
-                {clip.muted ? "M" : "m"}
-              </button>
+              <div style={{ position: "absolute", bottom: 2, left: 2, display: "flex", gap: 2 }}>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleClipMute(clip.id, !clip.muted);
+                  }}
+                  title={clip.muted ? "unmute this clip" : "mute this clip"}
+                  style={{
+                    padding: "0 0.25rem",
+                    fontSize: "0.7rem",
+                    lineHeight: 1.4,
+                    background: "#fff",
+                    borderColor: clip.muted ? "#c00" : undefined,
+                    color: clip.muted ? "#c00" : undefined,
+                  }}
+                >
+                  {clip.muted ? "M" : "m"}
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRemoveClip(clip.id);
+                  }}
+                  title="remove from timeline"
+                  style={{ padding: "0 0.25rem", fontSize: "0.7rem", lineHeight: 1.4, background: "#fff" }}
+                >
+                  x
+                </button>
+              </div>
               <img
                 src={`/films/${film}/${clip.shotFilename}`}
                 alt={clip.shotFilename}
@@ -244,13 +232,30 @@ export function Timeline({
         })}
       </div>
 
-      <div style={{ flexShrink: 0, borderLeft: "1px solid #000", paddingLeft: "1rem", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+      <div style={{ flexShrink: 0, borderLeft: "1px solid #000", paddingLeft: "1rem", display: "flex", flexDirection: "column", alignItems: "center", gap: "0.25rem" }}>
+        {previewSrc ? (
+          <video
+            key={previewSrc}
+            src={previewSrc}
+            {...hoverableMedia({ kind: "video", src: previewSrc })}
+            style={{ width: 120, height: 68, background: "#000" }}
+          />
+        ) : (
+          <div style={{ width: 120, height: 68, background: "#000", color: "#999", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.65rem" }}>
+            no preview
+          </div>
+        )}
+        <button onClick={handlePreview} disabled={previewing || state.timeline.length === 0} style={{ width: "100%" }}>
+          {previewing ? "rendering..." : "Preview"}
+        </button>
+        {previewError && <div style={{ fontSize: "0.65rem", color: "red", maxWidth: 120 }}>{previewError}</div>}
+
         <div style={{ fontSize: "0.8rem" }}>total: {formatTime(totalDuration)}</div>
-        <button onClick={handleExport} disabled={exporting || state.timeline.length === 0}>
+        <button onClick={handleExport} disabled={exporting || state.timeline.length === 0} style={{ width: "100%" }}>
           {exporting ? "exporting..." : "Export"}
         </button>
         {exportResult && <div style={{ fontSize: "0.7rem", color: "#070" }}>saved {exportResult}</div>}
-        {exportError && <div style={{ fontSize: "0.7rem", color: "red", maxWidth: 160 }}>{exportError}</div>}
+        {exportError && <div style={{ fontSize: "0.7rem", color: "red", maxWidth: 120 }}>{exportError}</div>}
       </div>
     </div>
   );

@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import * as Checkbox from "@radix-ui/react-checkbox";
-import type { GenerationParams, PromptDef, ShotState, TimelineClip } from "@server/types";
+import type { GenerationParams, ShotState, TimelineClip } from "@server/types";
 import { Carousel } from "./Carousel";
 import { hoverableMedia } from "../lightbox";
 
@@ -15,7 +14,6 @@ function randomSeed(): number {
 export function ShotCard({
   film,
   shot,
-  prompts,
   genParams,
   timeline,
   onUpdateShot,
@@ -24,18 +22,19 @@ export function ShotCard({
   onTrimGeneration,
   onAddToTimeline,
   onRemoveFromTimeline,
+  onReveal,
 }: {
   film: string;
   shot: ShotState;
-  prompts: PromptDef[];
   genParams: GenerationParams;
   timeline: TimelineClip[];
-  onUpdateShot: (filename: string, patch: { selectedPromptIds?: string[]; customText?: string }) => void;
+  onUpdateShot: (filename: string, patch: { customText?: string }) => void;
   onGenerate: (filename: string, params: GenerationParams) => Promise<void>;
   onDeleteGeneration: (filename: string, generationId: string) => void;
   onTrimGeneration: (filename: string, generationId: string, inSec: number, outSec: number) => void;
   onAddToTimeline: (shotFilename: string, generationId: string) => void;
   onRemoveFromTimeline: (clipId: string) => void;
+  onReveal: (filename: string) => void;
 }) {
   const [customText, setCustomText] = useState(shot.customText);
   const [submitting, setSubmitting] = useState(false);
@@ -49,18 +48,10 @@ export function ShotCard({
     setIndex((i) => Math.min(i, Math.max(0, shot.generations.length - 1)));
   }, [shot.generations.length]);
 
-  const nonGlobalPrompts = prompts.filter((p) => !p.isGlobal);
   const hasGenerations = shot.generations.length > 0;
   const gen = hasGenerations ? shot.generations[Math.max(0, Math.min(index, shot.generations.length - 1))] : null;
   const timelineClip = gen ? timeline.find((c) => c.shotFilename === shot.filename && c.generationId === gen.id) : undefined;
   const isOnTimeline = timelineClip != null;
-
-  function toggleSelected(id: string, checked: boolean) {
-    const next = checked
-      ? [...shot.selectedPromptIds, id]
-      : shot.selectedPromptIds.filter((x) => x !== id);
-    onUpdateShot(shot.filename, { selectedPromptIds: next });
-  }
 
   async function handleSubmit() {
     setSubmitting(true);
@@ -89,7 +80,10 @@ export function ShotCard({
   }
 
   return (
-    <div style={{ border: "1px solid #000", borderRadius: 0, padding: "0.75rem", marginBottom: "1rem" }}>
+    <div
+      id={`shot-${encodeURIComponent(shot.filename)}`}
+      style={{ border: "1px solid #000", borderRadius: 0, padding: "0.75rem", marginBottom: "1rem" }}
+    >
       <div style={{ display: "flex", gap: "1rem", alignItems: "stretch", justifyContent: "space-between" }}>
         <div
           style={{
@@ -100,35 +94,27 @@ export function ShotCard({
             justifyContent: "space-between",
           }}
         >
-          <div>
-            <h3
-              style={{
-                marginTop: 0,
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-              }}
-            >
-              {shot.filename}
-            </h3>
-
-            {nonGlobalPrompts.length > 0 && (
-              <fieldset style={{ margin: "0 0 0.5rem" }}>
-                <legend>prompts</legend>
-                {nonGlobalPrompts.map((p) => (
-                  <label key={p.id} style={{ display: "block" }}>
-                    <Checkbox.Root
-                      checked={shot.selectedPromptIds.includes(p.id)}
-                      onCheckedChange={(checked) => toggleSelected(p.id, checked === true)}
-                      style={{ marginRight: "0.4rem" }}
-                    >
-                      <Checkbox.Indicator>x</Checkbox.Indicator>
-                    </Checkbox.Root>
-                    {p.text}
-                  </label>
-                ))}
-              </fieldset>
-            )}
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.4rem" }}>
+              <h3
+                style={{
+                  margin: 0,
+                  minWidth: 0,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {shot.filename}
+              </h3>
+              <button
+                onClick={() => onReveal(shot.filename)}
+                title="reveal in file manager"
+                style={{ flexShrink: 0, padding: "0 0.3rem" }}
+              >
+                &#8599;
+              </button>
+            </div>
 
             <textarea
               placeholder="custom prompt for this shot"

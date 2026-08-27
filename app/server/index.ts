@@ -19,11 +19,8 @@ function json(data: unknown, init?: ResponseInit): Response {
 }
 
 function buildFinalPrompt(prompts: PromptDef[], shot: ShotState): string {
-  const globals = prompts.filter((p) => p.isGlobal && p.globalEnabled).map((p) => p.text);
-  const selected = prompts
-    .filter((p) => shot.selectedPromptIds.includes(p.id) && !p.isGlobal)
-    .map((p) => p.text);
-  const parts = [...globals, ...selected, shot.customText].map((t) => t.trim()).filter(Boolean);
+  const enabled = prompts.filter((p) => p.enabled).map((p) => p.text);
+  const parts = [...enabled, shot.customText].map((t) => t.trim()).filter(Boolean);
   return parts.join("\n\n");
 }
 
@@ -44,13 +41,12 @@ const server = Bun.serve({
 
     "/api/films/:film/prompts": {
       POST: async (req) => {
-        const body = (await req.json()) as { text?: string; isGlobal?: boolean };
+        const body = (await req.json()) as { text?: string; enabled?: boolean };
         if (!body.text?.trim()) return json({ error: "text is required" }, { status: 400 });
         const prompt: PromptDef = {
           id: nanoid(8),
           text: body.text.trim(),
-          isGlobal: Boolean(body.isGlobal),
-          globalEnabled: true,
+          enabled: Boolean(body.enabled),
           createdAt: new Date().toISOString(),
         };
         const state = await mutateFilmState(req.params.film, (s) => {
@@ -62,22 +58,18 @@ const server = Bun.serve({
 
     "/api/films/:film/prompts/:id": {
       PATCH: async (req) => {
-        const body = (await req.json()) as Partial<Pick<PromptDef, "text" | "isGlobal" | "globalEnabled">>;
+        const body = (await req.json()) as Partial<Pick<PromptDef, "text" | "enabled">>;
         const state = await mutateFilmState(req.params.film, (s) => {
           const prompt = s.prompts.find((p) => p.id === req.params.id);
           if (!prompt) return;
           if (typeof body.text === "string") prompt.text = body.text;
-          if (typeof body.isGlobal === "boolean") prompt.isGlobal = body.isGlobal;
-          if (typeof body.globalEnabled === "boolean") prompt.globalEnabled = body.globalEnabled;
+          if (typeof body.enabled === "boolean") prompt.enabled = body.enabled;
         });
         return json(state);
       },
       DELETE: async (req) => {
         const state = await mutateFilmState(req.params.film, (s) => {
           s.prompts = s.prompts.filter((p) => p.id !== req.params.id);
-          for (const shot of Object.values(s.shots)) {
-            shot.selectedPromptIds = shot.selectedPromptIds.filter((id) => id !== req.params.id);
-          }
         });
         return json(state);
       },
@@ -85,14 +77,31 @@ const server = Bun.serve({
 
     "/api/films/:film/shots/:filename": {
       PATCH: async (req) => {
-        const body = (await req.json()) as { selectedPromptIds?: string[]; customText?: string };
+        const body = (await req.json()) as { customText?: string };
         const state = await mutateFilmState(req.params.film, (s) => {
           const shot = s.shots[req.params.filename];
           if (!shot) return;
-          if (Array.isArray(body.selectedPromptIds)) shot.selectedPromptIds = body.selectedPromptIds;
           if (typeof body.customText === "string") shot.customText = body.customText;
         });
         return json(state);
+      },
+    },
+
+    "/api/films/:film/shots/:filename/reveal": {
+      POST: async (req) => {
+        const absPath = path.join(getFilmDir(req.params.film), req.params.filename);
+        try {
+          if (process.platform === "darwin") {
+            Bun.spawn(["open", "-R", absPath]);
+          } else if (process.platform === "win32") {
+            Bun.spawn(["explorer", `/select,${absPath}`]);
+          } else {
+            Bun.spawn(["xdg-open", path.dirname(absPath)]);
+          }
+          return json({ ok: true });
+        } catch (err) {
+          return json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+        }
       },
     },
 

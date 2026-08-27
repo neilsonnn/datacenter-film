@@ -150,9 +150,9 @@ export function Carousel({
         {generation?.status === "error" && <p style={{ color: "red" }}>error: {generation.error}</p>}
       </div>
 
-      {generation?.status === "completed" && totalDuration > 0 && (
-        <div style={{ marginTop: "0.25rem" }}>
-          <div style={{ position: "relative", height: 6, background: "#eee", border: "1px solid #000" }}>
+      <div style={{ marginTop: "0.25rem" }}>
+        <div style={{ position: "relative", height: 6, background: "#eee", border: "1px solid #000" }}>
+          {totalDuration > 0 && (
             <div
               style={{
                 position: "absolute",
@@ -163,15 +163,15 @@ export function Carousel({
                 background: "#000",
               }}
             />
-          </div>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.7rem" }}>
-            <span>{formatTime(liveIn)}</span>
-            <span>
-              {formatTime(liveOut)} / {formatTime(totalDuration)}
-            </span>
-          </div>
+          )}
         </div>
-      )}
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.7rem" }}>
+          <span>{totalDuration > 0 ? formatTime(liveIn) : "-:--"}</span>
+          <span>
+            {totalDuration > 0 ? `${formatTime(liveOut)} / ${formatTime(totalDuration)}` : "-:-- / -:--"}
+          </span>
+        </div>
+      </div>
     </div>
   );
 }

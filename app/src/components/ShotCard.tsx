@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import * as Checkbox from "@radix-ui/react-checkbox";
-import type { GenerationParams, PromptDef, ShotState } from "@server/types";
+import type { GenerationParams, PromptDef, ShotState, TimelineClip } from "@server/types";
 import { Carousel } from "./Carousel";
 
 const MEDIA_WIDTH = 400;
@@ -16,17 +16,25 @@ export function ShotCard({
   shot,
   prompts,
   genParams,
+  timeline,
   onUpdateShot,
   onGenerate,
   onDeleteGeneration,
+  onTrimGeneration,
+  onAddToTimeline,
+  onRemoveFromTimeline,
 }: {
   film: string;
   shot: ShotState;
   prompts: PromptDef[];
   genParams: GenerationParams;
+  timeline: TimelineClip[];
   onUpdateShot: (filename: string, patch: { selectedPromptIds?: string[]; customText?: string }) => void;
   onGenerate: (filename: string, params: GenerationParams) => Promise<void>;
   onDeleteGeneration: (filename: string, generationId: string) => void;
+  onTrimGeneration: (filename: string, generationId: string, inSec: number, outSec: number) => void;
+  onAddToTimeline: (shotFilename: string, generationId: string) => void;
+  onRemoveFromTimeline: (clipId: string) => void;
 }) {
   const [customText, setCustomText] = useState(shot.customText);
   const [submitting, setSubmitting] = useState(false);
@@ -43,6 +51,8 @@ export function ShotCard({
   const nonGlobalPrompts = prompts.filter((p) => !p.isGlobal);
   const hasGenerations = shot.generations.length > 0;
   const gen = hasGenerations ? shot.generations[Math.max(0, Math.min(index, shot.generations.length - 1))] : null;
+  const timelineClip = gen ? timeline.find((c) => c.shotFilename === shot.filename && c.generationId === gen.id) : undefined;
+  const isOnTimeline = timelineClip != null;
 
   function toggleSelected(id: string, checked: boolean) {
     const next = checked
@@ -69,6 +79,12 @@ export function ShotCard({
     } finally {
       setRolling(false);
     }
+  }
+
+  function handleToggleTimeline() {
+    if (!gen) return;
+    if (timelineClip) onRemoveFromTimeline(timelineClip.id);
+    else onAddToTimeline(shot.filename, gen.id);
   }
 
   return (
@@ -126,10 +142,10 @@ export function ShotCard({
           <div>
             <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.5rem" }}>
               <button onClick={handleSubmit} disabled={submitting || rolling}>
-                {submitting ? "submitting..." : "Submit"}
+                {submitting ? "genning..." : "Gen 1"}
               </button>
               <button onClick={handleRoll4} disabled={submitting || rolling}>
-                {rolling ? "rolling..." : "Roll 4"}
+                {rolling ? "genning..." : "Gen 4"}
               </button>
             </div>
 
@@ -143,6 +159,18 @@ export function ShotCard({
                 onClick={() => setIndex((i) => i + 1)}
               >
                 &rarr;
+              </button>
+              <button
+                onClick={handleToggleTimeline}
+                disabled={!gen}
+                title={isOnTimeline ? "remove from timeline" : "add to timeline"}
+                style={{
+                  borderColor: isOnTimeline ? "#0a0" : undefined,
+                  background: isOnTimeline ? "#e6ffe6" : undefined,
+                  color: isOnTimeline ? "#070" : undefined,
+                }}
+              >
+                +
               </button>
               <button disabled={!gen} onClick={() => setShowJson((v) => !v)} title="view output JSON">
                 {"{}"}
@@ -195,7 +223,13 @@ export function ShotCard({
             }}
           />
 
-          <Carousel film={film} generation={gen} width={MEDIA_WIDTH} height={MEDIA_HEIGHT} />
+          <Carousel
+            film={film}
+            generation={gen}
+            width={MEDIA_WIDTH}
+            height={MEDIA_HEIGHT}
+            onTrimChange={(inSec, outSec) => gen && onTrimGeneration(shot.filename, gen.id, inSec, outSec)}
+          />
         </div>
       </div>
     </div>

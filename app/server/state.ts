@@ -1,7 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import type { FilmState, ShotState } from "./types";
-import { listShotImages } from "./scanner";
+import { listAudioFiles, listShotImages } from "./scanner";
 
 const FILMS_DIR = path.resolve(import.meta.dir, "..", "..", "films");
 
@@ -25,6 +25,9 @@ function emptyState(): FilmState {
       },
     ],
     shots: {},
+    timeline: [],
+    soundtrack: null,
+    audioFx: { reverb: 0, lowpassHz: null },
   };
 }
 
@@ -39,6 +42,9 @@ async function readStateFile(film: string): Promise<FilmState> {
     return {
       prompts: Array.isArray(parsed.prompts) ? parsed.prompts : [],
       shots: parsed.shots && typeof parsed.shots === "object" ? parsed.shots : {},
+      timeline: Array.isArray(parsed.timeline) ? parsed.timeline : [],
+      soundtrack: parsed.soundtrack ?? null,
+      audioFx: parsed.audioFx ?? { reverb: 0, lowpassHz: null },
     };
   } catch {
     return emptyState();
@@ -70,11 +76,15 @@ export function filmsDir(): string {
   return FILMS_DIR;
 }
 
+export function repoRoot(): string {
+  return path.dirname(FILMS_DIR);
+}
+
 export function getFilmDir(film: string): string {
   return filmDir(film);
 }
 
-/** Scans disk for shot images, merges with persisted state (new files become fresh shots), persists if changed, and returns the merged state. */
+/** Scans disk for shot images and an audio file, merges with persisted state (new files become fresh shots / the soundtrack), persists if changed, and returns the merged state. */
 export async function getMergedFilmState(film: string): Promise<FilmState> {
   const state = await getState(film);
   const filenames = await listShotImages(filmDir(film));
@@ -90,6 +100,16 @@ export async function getMergedFilmState(film: string): Promise<FilmState> {
       };
       changed = true;
     }
+  }
+
+  const audioFiles = await listAudioFiles(filmDir(film));
+  if (state.soundtrack && !audioFiles.includes(state.soundtrack.filename)) {
+    state.soundtrack = null;
+    changed = true;
+  }
+  if (!state.soundtrack && audioFiles.length > 0) {
+    state.soundtrack = { filename: audioFiles[0], inSec: 0 };
+    changed = true;
   }
 
   if (changed) await persist(film, state);

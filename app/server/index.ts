@@ -9,6 +9,7 @@ import {
   mutateFilmState,
 } from "./state";
 import { checkStatus, downloadVideo, fetchResult, MODEL, submitGeneration, uploadImage } from "./fal";
+import { exportFilm } from "./export";
 import type { Generation, GenerationParams, PromptDef, ShotState } from "./types";
 
 const PORT = Number(process.env.PORT) || 8787;
@@ -152,6 +153,17 @@ const server = Bun.serve({
     },
 
     "/api/films/:film/shots/:filename/generations/:generationId": {
+      PATCH: async (req) => {
+        const { film, filename, generationId } = req.params;
+        const body = (await req.json()) as { inSec?: number; outSec?: number };
+        const state = await mutateFilmState(film, (s) => {
+          const gen = s.shots[filename]?.generations.find((g) => g.id === generationId);
+          if (!gen) return;
+          if (typeof body.inSec === "number") gen.inSec = Math.max(0, body.inSec);
+          if (typeof body.outSec === "number") gen.outSec = Math.min(gen.params.duration, body.outSec);
+        });
+        return json(state);
+      },
       DELETE: async (req) => {
         const { film, filename, generationId } = req.params;
         const state = await getMergedFilmState(film);
@@ -166,8 +178,75 @@ const server = Bun.serve({
         const newState = await mutateFilmState(film, (s) => {
           const shot = s.shots[filename];
           if (shot) shot.generations = shot.generations.filter((g) => g.id !== generationId);
+          s.timeline = s.timeline.filter((c) => c.generationId !== generationId);
         });
         return json(newState);
+      },
+    },
+
+    "/api/films/:film/timeline": {
+      POST: async (req) => {
+        const body = (await req.json()) as { shotFilename?: string; generationId?: string };
+        if (!body.shotFilename || !body.generationId) {
+          return json({ error: "shotFilename and generationId are required" }, { status: 400 });
+        }
+        const state = await mutateFilmState(req.params.film, (s) => {
+          s.timeline.push({ id: nanoid(8), shotFilename: body.shotFilename!, generationId: body.generationId! });
+        });
+        return json(state);
+      },
+      PATCH: async (req) => {
+        const body = (await req.json()) as { clipIds?: string[] };
+        if (!Array.isArray(body.clipIds)) return json({ error: "clipIds is required" }, { status: 400 });
+        const state = await mutateFilmState(req.params.film, (s) => {
+          const byId = new Map(s.timeline.map((c) => [c.id, c]));
+          const reordered = body.clipIds!.map((id) => byId.get(id)).filter((c) => c != null);
+          if (reordered.length === s.timeline.length) s.timeline = reordered;
+        });
+        return json(state);
+      },
+    },
+
+    "/api/films/:film/timeline/:clipId": {
+      DELETE: async (req) => {
+        const state = await mutateFilmState(req.params.film, (s) => {
+          s.timeline = s.timeline.filter((c) => c.id !== req.params.clipId);
+        });
+        return json(state);
+      },
+    },
+
+    "/api/films/:film/soundtrack": {
+      PATCH: async (req) => {
+        const body = (await req.json()) as { inSec?: number };
+        const state = await mutateFilmState(req.params.film, (s) => {
+          if (s.soundtrack && typeof body.inSec === "number") {
+            s.soundtrack.inSec = Math.max(0, body.inSec);
+          }
+        });
+        return json(state);
+      },
+    },
+
+    "/api/films/:film/audiofx": {
+      PATCH: async (req) => {
+        const body = (await req.json()) as { reverb?: number; lowpassHz?: number | null };
+        const state = await mutateFilmState(req.params.film, (s) => {
+          if (typeof body.reverb === "number") s.audioFx.reverb = Math.max(0, Math.min(100, body.reverb));
+          if (body.lowpassHz === null || typeof body.lowpassHz === "number") s.audioFx.lowpassHz = body.lowpassHz;
+        });
+        return json(state);
+      },
+    },
+
+    "/api/films/:film/export": {
+      POST: async (req) => {
+        try {
+          const result = await exportFilm(req.params.film);
+          return json(result);
+        } catch (err) {
+          return json({ error: err instanceof Error ? err.message : String(err) }, { status: 400 });
+        }
       },
     },
 

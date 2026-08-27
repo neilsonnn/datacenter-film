@@ -1,11 +1,14 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import type { FilmState, GenerationParams } from "@server/types";
 import { api } from "./api";
+import { AudioFxPanel } from "./components/AudioFxPanel";
 import { FilmPicker } from "./components/FilmPicker";
 import { GenerationSettings } from "./components/GenerationSettings";
 import { GlobalPromptsBar } from "./components/GlobalPromptsBar";
 import { PromptEditor } from "./components/PromptEditor";
 import { ShotCard } from "./components/ShotCard";
+import { Timeline, TIMELINE_HEIGHT } from "./components/Timeline";
+import { TopBar } from "./components/TopBar";
 
 const POLL_MS = 2000;
 
@@ -46,23 +49,33 @@ export default function App() {
 
   if (films.length === 0) {
     return (
-      <main style={{ padding: "2rem", fontFamily: "serif" }}>
-        <h1>datacenter-film</h1>
-        <p>
-          No films yet. Create a folder under <code>films/</code> (e.g. <code>films/my-first-film/</code>) and drag
-          some images into it.
-        </p>
-      </main>
+      <>
+        <TopBar />
+        <main style={{ padding: "2rem", fontFamily: "serif" }}>
+          <p>
+            No films yet. Create a folder under <code>films/</code> (e.g. <code>films/my-first-film/</code>) and drag
+            some images into it.
+          </p>
+        </main>
+      </>
     );
   }
 
   return (
-    <main style={{ padding: "1.5rem", fontFamily: "serif", width: "100%", boxSizing: "border-box" }}>
-      <h1>datacenter-film</h1>
-
-      {selectedFilm && state && (
+    <>
+      <TopBar />
+      <main
+        style={{
+          padding: "1.5rem",
+          paddingBottom: TIMELINE_HEIGHT + 24,
+          fontFamily: "serif",
+          width: "100%",
+          boxSizing: "border-box",
+        }}
+      >
+        {selectedFilm && state && (
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "1.5rem" }}>
-          <aside style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+          <aside style={{ display: "flex", flexDirection: "column", gap: "1.5rem", position: "sticky", top: 0 }}>
             <section style={sectionStyle}>
               <h2>Film</h2>
               <FilmPicker films={films} selected={selectedFilm} onSelect={setSelectedFilm} />
@@ -81,6 +94,11 @@ export default function App() {
                   api.updatePrompt(selectedFilm, id, { globalEnabled: enabled }).then(setState)
                 }
               />
+            </section>
+
+            <section style={sectionStyle}>
+              <h2>Audio</h2>
+              <AudioFxPanel audioFx={state.audioFx} onChange={(patch) => api.updateAudioFx(selectedFilm, patch).then(setState)} />
             </section>
 
             <section style={sectionStyle}>
@@ -108,6 +126,7 @@ export default function App() {
                   shot={shot}
                   prompts={state.prompts}
                   genParams={genParams}
+                  timeline={state.timeline}
                   onUpdateShot={(filename, patch) => api.updateShot(selectedFilm, filename, patch).then(setState)}
                   onGenerate={async (filename, params: GenerationParams) => {
                     await api.generate(selectedFilm, filename, params);
@@ -116,11 +135,30 @@ export default function App() {
                   onDeleteGeneration={(filename, generationId) =>
                     api.deleteGeneration(selectedFilm, filename, generationId).then(setState)
                   }
+                  onTrimGeneration={(filename, generationId, inSec, outSec) =>
+                    api.trimGeneration(selectedFilm, filename, generationId, { inSec, outSec }).then(setState)
+                  }
+                  onAddToTimeline={(shotFilename, generationId) =>
+                    api.addToTimeline(selectedFilm, shotFilename, generationId).then(setState)
+                  }
+                  onRemoveFromTimeline={(clipId) => api.removeFromTimeline(selectedFilm, clipId).then(setState)}
                 />
               ))}
           </section>
-        </div>
-      )}
-    </main>
+          </div>
+        )}
+
+        {selectedFilm && state && (
+          <Timeline
+            film={selectedFilm}
+            state={state}
+            onReorder={(clipIds) => api.reorderTimeline(selectedFilm, clipIds).then(setState)}
+            onRemoveClip={(clipId) => api.removeFromTimeline(selectedFilm, clipId).then(setState)}
+            onUpdateSoundtrackIn={(inSec) => api.updateSoundtrack(selectedFilm, inSec).then(setState)}
+            onExport={() => api.exportFilm(selectedFilm)}
+          />
+        )}
+      </main>
+    </>
   );
 }

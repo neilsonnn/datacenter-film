@@ -50,4 +50,40 @@ export const api = {
       `/api/films/${film}/shots/${encodeURIComponent(filename)}/generations/${generationId}`,
       { method: "DELETE" },
     ),
+
+  trimGeneration: (film: string, filename: string, generationId: string, patch: { inSec?: number; outSec?: number }) =>
+    req<FilmState>(
+      `/api/films/${film}/shots/${encodeURIComponent(filename)}/generations/${generationId}`,
+      { method: "PATCH", body: JSON.stringify(patch) },
+    ),
+
+  addToTimeline: (film: string, shotFilename: string, generationId: string) =>
+    req<FilmState>(`/api/films/${film}/timeline`, {
+      method: "POST",
+      body: JSON.stringify({ shotFilename, generationId }),
+    }),
+
+  removeFromTimeline: (film: string, clipId: string) =>
+    req<FilmState>(`/api/films/${film}/timeline/${clipId}`, { method: "DELETE" }),
+
+  reorderTimeline: (film: string, clipIds: string[]) =>
+    req<FilmState>(`/api/films/${film}/timeline`, {
+      method: "PATCH",
+      body: JSON.stringify({ clipIds }),
+    }),
+
+  updateSoundtrack: (film: string, inSec: number) =>
+    req<FilmState>(`/api/films/${film}/soundtrack`, {
+      method: "PATCH",
+      body: JSON.stringify({ inSec }),
+    }),
+
+  updateAudioFx: (film: string, patch: { reverb?: number; lowpassHz?: number | null }) =>
+    req<FilmState>(`/api/films/${film}/audiofx`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+
+  exportFilm: (film: string) =>
+    req<{ filename: string; outputPath: string }>(`/api/films/${film}/export`, { method: "POST" }),
 };

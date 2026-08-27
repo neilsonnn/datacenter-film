@@ -24,6 +24,9 @@ export interface Generation {
   params: GenerationParams;
   createdAt: string;
   updatedAt: string;
+  /** Trim points in seconds, within [0, params.duration]. Default in=0, out=params.duration. */
+  inSec?: number;
+  outSec?: number;
 }
 
 export interface ShotState {
@@ -33,7 +36,28 @@ export interface ShotState {
   generations: Generation[];
 }
 
+export interface TimelineClip {
+  id: string;
+  shotFilename: string;
+  generationId: string;
+}
+
+export interface Soundtrack {
+  filename: string;
+  inSec: number;
+}
+
+export interface AudioFx {
+  /** 0-100, 0 = no reverb */
+  reverb: number;
+  /** Cutoff frequency in Hz, or null to disable the low-pass filter */
+  lowpassHz: number | null;
+}
+
 export interface FilmState {
   prompts: PromptDef[];
   shots: Record<string, ShotState>;
+  timeline: TimelineClip[];
+  soundtrack: Soundtrack | null;
+  audioFx: AudioFx;
 }

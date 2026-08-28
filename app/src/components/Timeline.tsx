@@ -1,8 +1,8 @@
 import { useState, type DragEvent } from "react";
-import type { FilmStateResponse } from "@server/types";
+import type { AspectRatio, FilmStateResponse } from "@server/types";
 import { AudioFxPanel } from "./AudioFxPanel";
 import { scrollToShot } from "./ShotNav";
-import { hoverableMedia, openLightbox } from "../lightbox";
+import { openLightbox } from "../lightbox";
 
 export const TIMELINE_HEIGHT = 190;
 
@@ -21,6 +21,7 @@ export function Timeline({
   onSelectSoundtrack,
   onUpdateSoundtrackIn,
   onUpdateAudioFx,
+  onUpdateAspectRatio,
   onExport,
   onPreview,
 }: {
@@ -32,6 +33,7 @@ export function Timeline({
   onSelectSoundtrack: (filename: string | null) => void;
   onUpdateSoundtrackIn: (inSec: number) => void;
   onUpdateAudioFx: (patch: { reverb?: number; lowpassHz?: number | null; clipsOnly?: boolean }) => void;
+  onUpdateAspectRatio: (aspectRatio: AspectRatio) => void;
   onExport: () => Promise<{ filename: string; outputPath: string }>;
   onPreview: () => Promise<{ filename: string; outputPath: string }>;
 }) {
@@ -230,21 +232,27 @@ export function Timeline({
       </div>
 
       <div style={{ flexShrink: 0, borderLeft: "1px solid #000", paddingLeft: "1rem", display: "flex", flexDirection: "column", alignItems: "center", gap: "0.25rem" }}>
-        {previewSrc ? (
-          <video
-            key={previewSrc}
-            src={previewSrc}
-            {...hoverableMedia({ kind: "video", src: previewSrc })}
-            style={{ width: 120, height: 68, background: "#000" }}
-          />
-        ) : (
-          <div style={{ width: 120, height: 68, background: "#000", color: "#999", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.65rem" }}>
-            no preview
-          </div>
-        )}
-        <button onClick={handlePreview} disabled={previewing || state.timeline.length === 0} style={{ width: "100%" }}>
-          {previewing ? "rendering..." : "Preview"}
-        </button>
+        <select
+          value={state.aspectRatio}
+          onChange={(e) => onUpdateAspectRatio(e.target.value as AspectRatio)}
+          style={{ width: "100%" }}
+        >
+          <option value="landscape">16:9 landscape</option>
+          <option value="square">1:1 square</option>
+          <option value="portrait">9:16 portrait</option>
+        </select>
+        <div style={{ display: "flex", gap: "0.25rem", width: "100%" }}>
+          <button onClick={handlePreview} disabled={previewing || state.timeline.length === 0} style={{ flex: 1 }}>
+            {previewing ? "rendering..." : "Preview"}
+          </button>
+          <button
+            onClick={() => previewSrc && openLightbox({ kind: "video", src: previewSrc })}
+            disabled={!previewSrc}
+            title="open last preview"
+          >
+            Open
+          </button>
+        </div>
         {previewError && <div style={{ fontSize: "0.65rem", color: "red", maxWidth: 120 }}>{previewError}</div>}
 
         <div style={{ fontSize: "0.8rem" }}>total: {formatTime(totalDuration)}</div>

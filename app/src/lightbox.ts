@@ -1,4 +1,13 @@
-export type HoveredMedia = { kind: "image" | "video"; src: string } | null;
+export interface LightboxNav {
+  /** Shown only for left/right (generation) navigation, e.g. "2 / 5". No readout for up/down. */
+  counter?: string;
+  onLeft?: () => void;
+  onRight?: () => void;
+  onUp?: () => void;
+  onDown?: () => void;
+}
+
+export type HoveredMedia = { kind: "image" | "video"; src: string; nav?: LightboxNav } | null;
 
 let current: HoveredMedia = null;
 

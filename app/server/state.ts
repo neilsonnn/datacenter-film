@@ -27,8 +27,11 @@ function emptyState(): FilmState {
     timeline: [],
     soundtrack: null,
     audioFx: { reverb: 0, lowpassHz: null, clipsOnly: false },
+    aspectRatio: "landscape",
   };
 }
+
+const ASPECT_RATIOS = new Set(["landscape", "square", "portrait"]);
 
 const cache = new Map<string, FilmState>();
 const writeQueues = new Map<string, Promise<unknown>>();
@@ -60,6 +63,7 @@ async function readStateFile(film: string): Promise<FilmState> {
         lowpassHz: parsed.audioFx?.lowpassHz ?? null,
         clipsOnly: parsed.audioFx?.clipsOnly ?? false,
       },
+      aspectRatio: ASPECT_RATIOS.has(parsed.aspectRatio) ? parsed.aspectRatio : "landscape",
     };
   } catch {
     return emptyState();

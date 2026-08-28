@@ -8,12 +8,30 @@ export function Lightbox() {
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if (e.code !== "Space") return;
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
-      e.preventDefault();
-      if (media) closeLightbox();
-      else openLightbox(getHoveredMedia());
+
+      if (e.code === "Space") {
+        e.preventDefault();
+        if (media) closeLightbox();
+        else openLightbox(getHoveredMedia());
+        return;
+      }
+
+      if (!media) return;
+      if (e.key === "ArrowLeft" && media.nav?.onLeft) {
+        e.preventDefault();
+        media.nav.onLeft();
+      } else if (e.key === "ArrowRight" && media.nav?.onRight) {
+        e.preventDefault();
+        media.nav.onRight();
+      } else if (e.key === "ArrowUp" && media.nav?.onUp) {
+        e.preventDefault();
+        media.nav.onUp();
+      } else if (e.key === "ArrowDown" && media.nav?.onDown) {
+        e.preventDefault();
+        media.nav.onDown();
+      }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -29,8 +47,10 @@ export function Lightbox() {
         inset: 0,
         background: "rgba(0,0,0,0.85)",
         display: "flex",
+        flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
+        gap: "0.5rem",
         zIndex: 2000,
       }}
     >
@@ -39,6 +59,7 @@ export function Lightbox() {
       ) : (
         <video src={media.src} controls autoPlay style={{ maxWidth: "90vw", maxHeight: "90vh" }} />
       )}
+      {media.nav?.counter && <div style={{ color: "#fff", fontFamily: "serif" }}>{media.nav.counter}</div>}
     </div>
   );
 }

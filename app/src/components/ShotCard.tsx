@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { GenerationParams, ShotState, TimelineClip } from "@server/types";
 import { Carousel } from "./Carousel";
 import { hoverableMedia } from "../lightbox";
+import { buildShotNav, registerShot } from "../shotRegistry";
 
 const MEDIA_WIDTH = 400;
 const MEDIA_HEIGHT = 225; // 16:9
@@ -64,6 +65,10 @@ export function ShotCard({
     }
   }, [shot.generations]);
 
+  useEffect(() => {
+    registerShot({ film, filename: shot.filename, generations: shot.generations, setIndex });
+  }, [film, shot.filename, shot.generations]);
+
   const hasGenerations = shot.generations.length > 0;
   const gen = hasGenerations ? shot.generations[Math.max(0, Math.min(index, shot.generations.length - 1))] : null;
   const timelineClip = gen ? timeline.find((c) => c.shotFilename === shot.filename && c.generationId === gen.id) : undefined;
@@ -107,7 +112,7 @@ export function ShotCard({
             flexShrink: 0,
             display: "flex",
             flexDirection: "column",
-            justifyContent: "space-between",
+            gap: "0.5rem",
           }}
         >
           <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
@@ -143,16 +148,13 @@ export function ShotCard({
           </div>
 
           <div>
-            <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.5rem" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
               <button onClick={handleSubmit} disabled={submitting || rolling}>
                 {submitting ? "genning..." : "Gen 1"}
               </button>
               <button onClick={handleRoll4} disabled={submitting || rolling}>
                 {rolling ? "genning..." : "Gen 4"}
               </button>
-            </div>
-
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
               <button disabled={!hasGenerations || index <= 0} onClick={() => setIndex((i) => i - 1)}>
                 &larr;
               </button>
@@ -163,6 +165,9 @@ export function ShotCard({
               >
                 &rarr;
               </button>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
               <button
                 onClick={handleToggleTimeline}
                 disabled={!gen}
@@ -173,7 +178,7 @@ export function ShotCard({
                   color: isOnTimeline ? "#070" : undefined,
                 }}
               >
-                +
+                Add Shot
               </button>
               <button disabled={!gen} onClick={() => setShowJson((v) => !v)} title="view output JSON">
                 {"{}"}
@@ -233,6 +238,7 @@ export function ShotCard({
             width={MEDIA_WIDTH}
             height={MEDIA_HEIGHT}
             onTrimChange={(inSec, outSec) => gen && onTrimGeneration(shot.filename, gen.id, inSec, outSec)}
+            nav={buildShotNav(shot.filename, index)}
           />
         </div>
       </div>

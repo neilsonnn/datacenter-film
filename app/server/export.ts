@@ -1,22 +1,19 @@
 import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
+import type { AspectRatio } from "./types";
 import { getFilmDir, getMergedFilmState, repoRoot } from "./state";
+import { runFfmpeg } from "./ffmpeg";
 
-// Target canvas every clip gets cropped-to-fill into. fal's "768P" setting doesn't
-// produce a perfectly fixed size across every generation (observed both 1440x704 and
-// 1440x736 from real clips) — so instead of padding to fit (which bars any clip whose
-// exact aspect doesn't match), we scale up to cover this box and crop the centered
-// excess, the same object-fit:cover treatment used everywhere else in the app.
-const CLIP_WIDTH = 1440;
-const CLIP_HEIGHT = 704;
-
-async function runFfmpeg(args: string[]): Promise<void> {
-  const proc = Bun.spawn(["ffmpeg", ...args], { stdout: "pipe", stderr: "pipe" });
-  const [exitCode, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
-  if (exitCode !== 0) {
-    throw new Error(`ffmpeg failed (exit ${exitCode}): ${stderr.slice(-2000)}`);
-  }
-}
+// Target canvas every clip gets cropped-to-fill into, per aspect ratio. fal's "768P"
+// setting doesn't produce a perfectly fixed size across every generation (observed both
+// 1440x704 and 1440x736 from real clips) — so instead of padding to fit (which bars any
+// clip whose exact aspect doesn't match), we scale up to cover this box and crop the
+// centered excess, the same object-fit:cover treatment used everywhere else in the app.
+const ASPECT_DIMENSIONS: Record<AspectRatio, { width: number; height: number }> = {
+  landscape: { width: 1440, height: 810 }, // 16:9
+  square: { width: 1080, height: 1080 }, // 1:1
+  portrait: { width: 810, height: 1440 }, // 9:16
+};
 
 function reverbFilter(reverb: number): string {
   // afreeverb isn't available in every ffmpeg build; approximate a simple room reverb
@@ -49,6 +46,7 @@ export async function exportFilm(
   const state = await getMergedFilmState(film);
   if (state.timeline.length === 0) throw new Error("timeline is empty");
 
+  const { width: CLIP_WIDTH, height: CLIP_HEIGHT } = ASPECT_DIMENSIONS[state.aspectRatio];
   const filmDir = getFilmDir(film);
   const runId = `export-${Date.now()}`;
   const tmpDir = path.join(filmDir, ".zona", runId);

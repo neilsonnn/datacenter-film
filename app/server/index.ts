@@ -10,7 +10,20 @@ import {
 } from "./state";
 import { checkStatus, downloadVideo, fetchResult, MODEL, submitGeneration, uploadImage } from "./fal";
 import { exportFilm } from "./export";
-import type { Generation, GenerationParams, PromptDef, ShotState } from "./types";
+import { extractLastFrame } from "./frameExtract";
+import { getLevelDir, getMergedLevelState, mutateLevelState } from "./levelState";
+import type {
+  AspectRatio,
+  Facing,
+  Generation,
+  GenerationParams,
+  ImageRef,
+  LevelAction,
+  LevelEdge,
+  LevelNode,
+  PromptDef,
+  ShotState,
+} from "./types";
 
 const PORT = Number(process.env.PORT) || 8787;
 
@@ -22,6 +35,29 @@ function buildFinalPrompt(prompts: PromptDef[], shot: ShotState): string {
   const enabled = prompts.filter((p) => p.enabled).map((p) => p.text);
   const parts = [...enabled, shot.customText].map((t) => t.trim()).filter(Boolean);
   return parts.join("\n\n");
+}
+
+const WALK_DELTA: Record<Facing, [number, number]> = { N: [0, -1], S: [0, 1], E: [1, 0], W: [-1, 0] };
+const LEFT_TURN: Record<Facing, Facing> = { N: "W", W: "S", S: "E", E: "N" };
+const RIGHT_TURN: Record<Facing, Facing> = { N: "E", E: "S", S: "W", W: "N" };
+
+function computeTarget(node: LevelNode, action: LevelAction): { x: number; y: number; facing: Facing } {
+  if (action === "turnLeft") return { x: node.x, y: node.y, facing: LEFT_TURN[node.facing] };
+  if (action === "turnRight") return { x: node.x, y: node.y, facing: RIGHT_TURN[node.facing] };
+  const [dx, dy] = WALK_DELTA[node.facing];
+  return { x: node.x + dx, y: node.y + dy, facing: node.facing };
+}
+
+function buildLevelFinalPrompt(prompts: PromptDef[], actionPrompt: string, customText: string): string {
+  const enabled = prompts.filter((p) => p.enabled).map((p) => p.text);
+  const parts = [...enabled, actionPrompt, customText].map((t) => t.trim()).filter(Boolean);
+  return parts.join("\n\n");
+}
+
+function imagePath(film: string, image: ImageRef): string {
+  return image.source === "film"
+    ? path.join(getFilmDir(film), image.filename)
+    : path.join(getLevelDir(film), image.filename);
 }
 
 const server = Bun.serve({
@@ -51,6 +87,16 @@ const server = Bun.serve({
         };
         const state = await mutateFilmState(req.params.film, (s) => {
           s.prompts.push(prompt);
+        });
+        return json(state);
+      },
+      PATCH: async (req) => {
+        const body = (await req.json()) as { promptIds?: string[] };
+        if (!Array.isArray(body.promptIds)) return json({ error: "promptIds is required" }, { status: 400 });
+        const state = await mutateFilmState(req.params.film, (s) => {
+          const byId = new Map(s.prompts.map((p) => [p.id, p]));
+          const reordered = body.promptIds!.map((id) => byId.get(id)).filter((p) => p != null);
+          if (reordered.length === s.prompts.length) s.prompts = reordered;
         });
         return json(state);
       },
@@ -146,6 +192,7 @@ const server = Bun.serve({
               }
             });
           } catch (err) {
+            console.error(`generate failed for ${film}/${filename}:`, err);
             await mutateFilmState(film, (s) => {
               const g = s.shots[filename]?.generations.find((gen) => gen.id === generation.id);
               if (g) {
@@ -270,6 +317,19 @@ const server = Bun.serve({
       },
     },
 
+    "/api/films/:film/aspect-ratio": {
+      PATCH: async (req) => {
+        const body = (await req.json()) as { aspectRatio?: AspectRatio };
+        if (!body.aspectRatio || !["landscape", "square", "portrait"].includes(body.aspectRatio)) {
+          return json({ error: "aspectRatio must be landscape, square, or portrait" }, { status: 400 });
+        }
+        const state = await mutateFilmState(req.params.film, (s) => {
+          s.aspectRatio = body.aspectRatio!;
+        });
+        return json(state);
+      },
+    },
+
     "/api/films/:film/export": {
       POST: async (req) => {
         try {
@@ -289,6 +349,220 @@ const server = Bun.serve({
         } catch (err) {
           return json({ error: err instanceof Error ? err.message : String(err) }, { status: 400 });
         }
+      },
+    },
+
+    "/api/films/:film/level": {
+      GET: async (req) => json(await getMergedLevelState(req.params.film)),
+    },
+
+    "/api/films/:film/level/prompts": {
+      POST: async (req) => {
+        const body = (await req.json()) as { text?: string; enabled?: boolean };
+        if (!body.text?.trim()) return json({ error: "text is required" }, { status: 400 });
+        const prompt: PromptDef = {
+          id: nanoid(8),
+          text: body.text.trim(),
+          enabled: Boolean(body.enabled),
+          createdAt: new Date().toISOString(),
+        };
+        const state = await mutateLevelState(req.params.film, (s) => {
+          s.prompts.push(prompt);
+        });
+        return json(state);
+      },
+      PATCH: async (req) => {
+        const body = (await req.json()) as { promptIds?: string[] };
+        if (!Array.isArray(body.promptIds)) return json({ error: "promptIds is required" }, { status: 400 });
+        const state = await mutateLevelState(req.params.film, (s) => {
+          const byId = new Map(s.prompts.map((p) => [p.id, p]));
+          const reordered = body.promptIds!.map((id) => byId.get(id)).filter((p) => p != null);
+          if (reordered.length === s.prompts.length) s.prompts = reordered;
+        });
+        return json(state);
+      },
+    },
+
+    "/api/films/:film/level/prompts/:id": {
+      PATCH: async (req) => {
+        const body = (await req.json()) as Partial<Pick<PromptDef, "text" | "enabled">>;
+        const state = await mutateLevelState(req.params.film, (s) => {
+          const prompt = s.prompts.find((p) => p.id === req.params.id);
+          if (!prompt) return;
+          if (typeof body.text === "string") prompt.text = body.text;
+          if (typeof body.enabled === "boolean") prompt.enabled = body.enabled;
+        });
+        return json(state);
+      },
+      DELETE: async (req) => {
+        const state = await mutateLevelState(req.params.film, (s) => {
+          s.prompts = s.prompts.filter((p) => p.id !== req.params.id);
+        });
+        return json(state);
+      },
+    },
+
+    "/api/films/:film/level/settings": {
+      PATCH: async (req) => {
+        const body = (await req.json()) as { walkAheadPrompt?: string; turnPrompt?: string };
+        const state = await mutateLevelState(req.params.film, (s) => {
+          if (typeof body.walkAheadPrompt === "string") s.walkAheadPrompt = body.walkAheadPrompt;
+          if (typeof body.turnPrompt === "string") s.turnPrompt = body.turnPrompt;
+        });
+        return json(state);
+      },
+    },
+
+    "/api/films/:film/level/start": {
+      POST: async (req) => {
+        const body = (await req.json()) as { imageFilename?: string };
+        if (!body.imageFilename) return json({ error: "imageFilename is required" }, { status: 400 });
+        const state = await mutateLevelState(req.params.film, (s) => {
+          if (s.nodes.length > 0) return;
+          const node: LevelNode = {
+            id: nanoid(8),
+            x: 0,
+            y: 0,
+            facing: "N",
+            image: { source: "film", filename: body.imageFilename! },
+          };
+          s.nodes.push(node);
+          s.currentNodeId = node.id;
+        });
+        return json(state);
+      },
+    },
+
+    "/api/films/:film/level/edges/:edgeId": {
+      DELETE: async (req) => {
+        const { film, edgeId } = req.params;
+        const state = await getMergedLevelState(film);
+        const edge = state.edges.find((e) => e.id === edgeId);
+        if (!edge) return json({ error: "edge not found" }, { status: 404 });
+
+        // Only allow deleting a leaf edge — if its destination has further branches, those
+        // would be orphaned (pointing at a from-node that no longer exists).
+        if (edge.toNodeId && state.edges.some((e) => e.fromNodeId === edge.toNodeId)) {
+          return json({ error: "delete the branches beyond this step first" }, { status: 400 });
+        }
+
+        if (edge.videoFilename) {
+          await unlink(path.join(getLevelDir(film), edge.videoFilename)).catch(() => {});
+        }
+        const toNode = edge.toNodeId ? state.nodes.find((n) => n.id === edge.toNodeId) : undefined;
+        if (toNode?.image.source === "level") {
+          await unlink(path.join(getLevelDir(film), toNode.image.filename)).catch(() => {});
+        }
+
+        const newState = await mutateLevelState(film, (s) => {
+          s.edges = s.edges.filter((e) => e.id !== edgeId);
+          if (edge.toNodeId) s.nodes = s.nodes.filter((n) => n.id !== edge.toNodeId);
+          if (s.currentNodeId === edge.toNodeId) {
+            s.currentNodeId = edge.fromNodeId;
+            s.history = s.history.filter((id) => id !== edge.toNodeId);
+          }
+        });
+        return json(newState);
+      },
+    },
+
+    "/api/films/:film/level/navigate": {
+      POST: async (req) => {
+        const body = (await req.json()) as { nodeId?: string; back?: boolean };
+        const state = await mutateLevelState(req.params.film, (s) => {
+          if (body.back) {
+            const prev = s.history.pop();
+            if (prev) s.currentNodeId = prev;
+          } else if (body.nodeId) {
+            if (s.currentNodeId && s.currentNodeId !== body.nodeId) s.history.push(s.currentNodeId);
+            s.currentNodeId = body.nodeId;
+          }
+        });
+        return json(state);
+      },
+    },
+
+    "/api/films/:film/level/generate": {
+      POST: async (req) => {
+        const { film } = req.params;
+        const body = (await req.json()) as {
+          action?: LevelAction;
+          sourceImage?: ImageRef;
+          customText?: string;
+          duration?: number;
+          seed?: number;
+        };
+        if (!body.action) return json({ error: "action is required" }, { status: 400 });
+
+        const state = await getMergedLevelState(film);
+        const currentNode = state.nodes.find((n) => n.id === state.currentNodeId);
+        if (!currentNode) return json({ error: "level not started yet" }, { status: 400 });
+
+        const alreadyExists = state.edges.some((e) => e.fromNodeId === currentNode.id && e.action === body.action);
+        if (alreadyExists) return json(state);
+
+        const params: GenerationParams = {
+          duration: body.duration ?? 6,
+          resolution: "768P",
+          seed: body.seed,
+        };
+        const actionPrompt = body.action === "walk" ? state.walkAheadPrompt : state.turnPrompt;
+        const customText = body.customText ?? "";
+        const finalPrompt = buildLevelFinalPrompt(state.prompts, actionPrompt, customText);
+        const sourceImage = body.sourceImage ?? currentNode.image;
+
+        const edge: LevelEdge = {
+          id: nanoid(8),
+          fromNodeId: currentNode.id,
+          toNodeId: null,
+          action: body.action,
+          status: "queued",
+          finalPrompt,
+          customText,
+          params,
+          sourceImage,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+
+        const newState = await mutateLevelState(film, (s) => {
+          s.edges.push(edge);
+        });
+
+        (async () => {
+          try {
+            const imageUrl = await uploadImage(imagePath(film, sourceImage));
+            const requestId = await submitGeneration(finalPrompt, imageUrl, params);
+            await mutateLevelState(film, (s) => {
+              const e = s.edges.find((x) => x.id === edge.id);
+              if (e) {
+                e.status = "in_progress";
+                e.requestId = requestId;
+                e.updatedAt = new Date().toISOString();
+              }
+            });
+          } catch (err) {
+            console.error(`level generate failed for ${film} edge ${edge.id}:`, err);
+            await mutateLevelState(film, (s) => {
+              const e = s.edges.find((x) => x.id === edge.id);
+              if (e) {
+                e.status = "error";
+                e.error = err instanceof Error ? err.message : String(err);
+                e.updatedAt = new Date().toISOString();
+              }
+            });
+          }
+        })();
+
+        return json(newState);
+      },
+    },
+
+    "/films/:film/level/:filename": {
+      GET: async (req) => {
+        const file = Bun.file(path.join(getLevelDir(req.params.film), req.params.filename));
+        if (!(await file.exists())) return new Response("Not found", { status: 404 });
+        return new Response(file);
       },
     },
 
@@ -364,6 +638,7 @@ async function pollGenerations(): Promise<void> {
             });
           }
         } catch (err) {
+          console.error(`poll failed for ${film}/${shot.filename} generation ${generation.id}:`, err);
           await mutateFilmState(film, (s) => {
             const g = s.shots[shot.filename]?.generations.find((gen) => gen.id === generation.id);
             if (g) {
@@ -380,4 +655,87 @@ async function pollGenerations(): Promise<void> {
 
 setInterval(() => {
   pollGenerations().catch((err) => console.error("poll loop error", err));
+}, 3000);
+
+// Background poll loop for world-builder: advances queued/in_progress level edges,
+// and on completion downloads the clip, extracts its last frame as the next node's
+// keyframe, materializes that node, and auto-advances the walker to it.
+async function pollLevelGenerations(): Promise<void> {
+  const films = await listFilms(filmsDir());
+  for (const film of films) {
+    const state = await getMergedLevelState(film);
+    for (const edge of state.edges) {
+      if (edge.status !== "queued" && edge.status !== "in_progress") continue;
+      if (!edge.requestId) continue;
+      try {
+        const falStatus = await checkStatus(edge.requestId);
+        if (falStatus === "IN_QUEUE") continue;
+        if (falStatus === "IN_PROGRESS") {
+          if (edge.status !== "in_progress") {
+            await mutateLevelState(film, (s) => {
+              const e = s.edges.find((x) => x.id === edge.id);
+              if (e) {
+                e.status = "in_progress";
+                e.updatedAt = new Date().toISOString();
+              }
+            });
+          }
+          continue;
+        }
+        if (falStatus === "COMPLETED") {
+          const { videoUrl } = await fetchResult(edge.requestId);
+          const bytes = await downloadVideo(videoUrl);
+          const levelDirPath = getLevelDir(film);
+          const videoFilename = `.${edge.id}.mp4`;
+          await Bun.write(path.join(levelDirPath, videoFilename), bytes);
+
+          const imageFilename = `.${edge.id}.jpg`;
+          await extractLastFrame(path.join(levelDirPath, videoFilename), path.join(levelDirPath, imageFilename));
+
+          const fromNode = state.nodes.find((n) => n.id === edge.fromNodeId);
+          if (!fromNode) throw new Error(`fromNode ${edge.fromNodeId} not found`);
+          const target = computeTarget(fromNode, edge.action);
+          const newNode: LevelNode = {
+            id: nanoid(8),
+            x: target.x,
+            y: target.y,
+            facing: target.facing,
+            image: { source: "level", filename: imageFilename },
+          };
+
+          await mutateLevelState(film, (s) => {
+            s.nodes.push(newNode);
+            const e = s.edges.find((x) => x.id === edge.id);
+            if (e) {
+              e.status = "completed";
+              e.videoFilename = videoFilename;
+              e.toNodeId = newNode.id;
+              e.updatedAt = new Date().toISOString();
+            }
+            // Only auto-walk the user forward if they're still standing where this edge
+            // started from — if they've since navigated elsewhere, leave them there; the
+            // new node is still saved and reachable, it just won't yank focus away.
+            if (s.currentNodeId === edge.fromNodeId) {
+              s.history.push(s.currentNodeId);
+              s.currentNodeId = newNode.id;
+            }
+          });
+        }
+      } catch (err) {
+        console.error(`level poll failed for ${film} edge ${edge.id}:`, err);
+        await mutateLevelState(film, (s) => {
+          const e = s.edges.find((x) => x.id === edge.id);
+          if (e) {
+            e.status = "error";
+            e.error = err instanceof Error ? err.message : String(err);
+            e.updatedAt = new Date().toISOString();
+          }
+        });
+      }
+    }
+  }
+}
+
+setInterval(() => {
+  pollLevelGenerations().catch((err) => console.error("level poll loop error", err));
 }, 3000);

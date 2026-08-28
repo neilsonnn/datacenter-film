@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import type { Generation } from "@server/types";
-import { setHoveredMedia } from "../lightbox";
+import { setHoveredMedia, type LightboxNav } from "../lightbox";
 
 function clamp01(x: number): number {
   return Math.min(1, Math.max(0, x));
@@ -23,12 +23,14 @@ export function Carousel({
   width,
   height,
   onTrimChange,
+  nav,
 }: {
   film: string;
   generation: Generation | null;
   width: number;
   height: number;
   onTrimChange: (inSec: number, outSec: number) => void;
+  nav?: LightboxNav;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const rectRef = useRef<DOMRect | null>(null);
@@ -134,7 +136,7 @@ export function Carousel({
             muted={!hovering}
             onMouseEnter={() => {
               setHovering(true);
-              setHoveredMedia({ kind: "video", src: `/films/${film}/${generation.videoFilename}` });
+              setHoveredMedia({ kind: "video", src: `/films/${film}/${generation.videoFilename}`, nav });
             }}
             onMouseLeave={() => setHovering(false)}
             onMouseDown={handleMouseDown}

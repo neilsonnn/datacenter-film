@@ -1,4 +1,5 @@
-import { unlink } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdir, unlink } from "node:fs/promises";
 import path from "node:path";
 import { nanoid } from "nanoid";
 import { listFilms } from "./scanner";
@@ -60,12 +61,39 @@ function imagePath(film: string, image: ImageRef): string {
     : path.join(getLevelDir(film), image.filename);
 }
 
+// Starts and ends with an alphanumeric so directory names can't be "." or "..", contain a
+// path separator, or trail whitespace/dots (which trips up Windows).
+const FILM_NAME_RE = /^[A-Za-z0-9](?:[A-Za-z0-9 _-]*[A-Za-z0-9])?$/;
+
+function openInFileManager(absPath: string): void {
+  if (process.platform === "darwin") Bun.spawn(["open", absPath]);
+  else if (process.platform === "win32") Bun.spawn(["explorer", absPath]);
+  else Bun.spawn(["xdg-open", absPath]);
+}
+
 const server = Bun.serve({
   port: PORT,
   idleTimeout: 0,
   routes: {
     "/api/films": {
       GET: async () => json({ films: await listFilms(filmsDir()) }),
+      POST: async (req) => {
+        const body = (await req.json()) as { name?: string };
+        const name = body.name?.trim();
+        if (!name) return json({ error: "name is required" }, { status: 400 });
+        if (!FILM_NAME_RE.test(name)) {
+          return json(
+            { error: "name may only contain letters, numbers, spaces, - and _" },
+            { status: 400 },
+          );
+        }
+        const dir = path.join(filmsDir(), name);
+        if (existsSync(dir)) return json({ error: "a film with that name already exists" }, { status: 409 });
+        await mkdir(dir, { recursive: true });
+        await Bun.write(path.join(dir, "drop-images-in-here.txt"), "");
+        openInFileManager(dir);
+        return json({ film: name }, { status: 201 });
+      },
     },
 
     "/api/films/:film/state": {

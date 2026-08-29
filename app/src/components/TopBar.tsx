@@ -20,6 +20,18 @@ export function TopBar() {
     return () => clearInterval(id);
   }, []);
 
+  async function handleNewFilm() {
+    const name = window.prompt("Name for the new film:")?.trim();
+    if (!name) return;
+    try {
+      const { film } = await api.createFilm(name);
+      setFilms((await api.listFilms()).films);
+      setSelectedFilm(film);
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : String(err));
+    }
+  }
+
   return (
     <header
       style={{
@@ -55,6 +67,9 @@ export function TopBar() {
             </option>
           ))}
         </select>
+        <button type="button" onClick={handleNewFilm}>
+          + new film
+        </button>
       </div>
       <nav style={{ display: "flex", gap: "1rem" }}>
         <a href="https://github.com/neilsonnn/datacenter-film" target="_blank" rel="noopener noreferrer">

@@ -20,6 +20,9 @@ async function req<T>(url: string, init?: RequestInit): Promise<T> {
 export const api = {
   listFilms: () => req<{ films: string[] }>("/api/films"),
 
+  createFilm: (name: string) =>
+    req<{ film: string }>("/api/films", { method: "POST", body: JSON.stringify({ name }) }),
+
   getState: (film: string) => req<FilmStateResponse>(`/api/films/${film}/state`),
 
   addPrompt: (film: string, text: string, enabled: boolean) =>

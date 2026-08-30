@@ -13,16 +13,20 @@ const DRAG_THRESHOLD = 6; // px of pointer movement before a mousedown counts as
 
 export function PromptEditor({
   prompts,
+  otherFilms,
   onAdd,
   onUpdate,
   onDelete,
   onReorder,
+  onImport,
 }: {
   prompts: PromptDef[];
+  otherFilms?: string[];
   onAdd: (text: string, enabled: boolean) => void;
   onUpdate: (id: string, patch: { text?: string; enabled?: boolean }) => void;
   onDelete: (id: string) => void;
   onReorder: (promptIds: string[]) => void;
+  onImport?: (sourceFilm: string) => void;
 }) {
   const [newText, setNewText] = useState("");
   const [newEnabled, setNewEnabled] = useState(false);
@@ -83,7 +87,31 @@ export function PromptEditor({
 
   return (
     <div>
-      <h2>Actions</h2>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem" }}>
+        <h2 style={{ margin: 0 }}>Actions</h2>
+        {onImport && (
+          <label style={{ display: "flex", alignItems: "center", gap: "0.3rem", fontSize: "0.8rem" }}>
+            import
+            <select
+              value=""
+              disabled={!otherFilms || otherFilms.length === 0}
+              onChange={(e) => {
+                if (e.target.value) onImport(e.target.value);
+                e.target.value = "";
+              }}
+            >
+              <option value="" disabled>
+                {!otherFilms || otherFilms.length === 0 ? "no other films" : "select a film"}
+              </option>
+              {otherFilms?.map((f) => (
+                <option key={f} value={f}>
+                  {f}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+      </div>
       <ul ref={listRef} style={{ listStyle: "none", padding: 0, maxHeight: 320, overflowY: "auto" }}>
         {prompts.map((p, i) => (
           <li

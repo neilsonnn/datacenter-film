@@ -105,13 +105,16 @@ export function getFilmDir(film: string): string {
 
 /**
  * Syncs a persisted FilmState against what's actually on disk: new images become fresh
- * shots, and a soundtrack whose file vanished gets un-selected. Mutates `state` in place
- * (caller decides whether/when to persist) and returns the live list of audio files.
+ * shots, a shot whose image vanished gets tombstoned (hidden from the film view, but its
+ * generation history is kept rather than deleted) — and un-tombstoned if the file
+ * reappears — and a soundtrack whose file vanished gets un-selected. Mutates `state` in
+ * place (caller decides whether/when to persist) and returns the live list of audio files.
  */
 async function mergeDiskIntoState(film: string, state: FilmState): Promise<{ audioFiles: string[]; changed: boolean }> {
   let changed = false;
 
   const filenames = await listShotImages(filmDir(film));
+  const onDisk = new Set(filenames);
   for (const filename of filenames) {
     if (!state.shots[filename]) {
       state.shots[filename] = {
@@ -119,6 +122,15 @@ async function mergeDiskIntoState(film: string, state: FilmState): Promise<{ aud
         customText: "",
         generations: [],
       };
+      changed = true;
+    } else if (state.shots[filename].deletedAt) {
+      delete state.shots[filename].deletedAt;
+      changed = true;
+    }
+  }
+  for (const shot of Object.values(state.shots)) {
+    if (!onDisk.has(shot.filename) && !shot.deletedAt) {
+      shot.deletedAt = new Date().toISOString();
       changed = true;
     }
   }

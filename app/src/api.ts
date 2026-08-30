@@ -46,6 +46,12 @@ export const api = {
       body: JSON.stringify({ promptIds }),
     }),
 
+  importPrompts: (film: string, sourceFilm: string) =>
+    req<FilmStateResponse>(`/api/films/${film}/prompts/import`, {
+      method: "POST",
+      body: JSON.stringify({ sourceFilm }),
+    }),
+
   updateShot: (film: string, filename: string, patch: { customText?: string }) =>
     req<FilmStateResponse>(`/api/films/${film}/shots/${encodeURIComponent(filename)}`, {
       method: "PATCH",
@@ -54,6 +60,11 @@ export const api = {
 
   revealShot: (film: string, filename: string) =>
     req<{ ok: true }>(`/api/films/${film}/shots/${encodeURIComponent(filename)}/reveal`, { method: "POST" }),
+
+  syncFinderSelection: (film: string, filename: string) =>
+    req<{ ok: true }>(`/api/films/${film}/shots/${encodeURIComponent(filename)}/finder-select`, {
+      method: "POST",
+    }),
 
   generate: (film: string, filename: string, params: GenerationParams) =>
     req<Generation>(`/api/films/${film}/shots/${encodeURIComponent(filename)}/generate`, {
@@ -114,6 +125,12 @@ export const api = {
 
   exportFilm: (film: string) =>
     req<{ filename: string; outputPath: string }>(`/api/films/${film}/export`, { method: "POST" }),
+
+  revealExport: (film: string, filename: string) =>
+    req<{ ok: true }>(`/api/films/${film}/export/reveal`, {
+      method: "POST",
+      body: JSON.stringify({ filename }),
+    }),
 
   previewFilm: (film: string) =>
     req<{ filename: string; outputPath: string }>(`/api/films/${film}/preview`, { method: "POST" }),

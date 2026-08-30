@@ -2,7 +2,8 @@ import { useState, type DragEvent } from "react";
 import type { AspectRatio, FilmStateResponse } from "@server/types";
 import { AudioFxPanel } from "./AudioFxPanel";
 import { scrollToShot } from "./ShotNav";
-import { openLightbox } from "../lightbox";
+import { hoverableMedia, openLightbox, type FinderSyncClip, type LightboxNav } from "../lightbox";
+import { selectShotGeneration } from "../shotRegistry";
 
 export const TIMELINE_HEIGHT = 190;
 
@@ -24,6 +25,7 @@ export function Timeline({
   onUpdateAspectRatio,
   onExport,
   onPreview,
+  onRevealExport,
 }: {
   film: string;
   state: FilmStateResponse;
@@ -36,6 +38,7 @@ export function Timeline({
   onUpdateAspectRatio: (aspectRatio: AspectRatio) => void;
   onExport: () => Promise<{ filename: string; outputPath: string }>;
   onPreview: () => Promise<{ filename: string; outputPath: string }>;
+  onRevealExport: (filename: string) => void;
 }) {
   const [exporting, setExporting] = useState(false);
   const [exportResult, setExportResult] = useState<string | null>(null);
@@ -52,6 +55,17 @@ export function Timeline({
     return Math.max(0, outSec - inSec);
   });
   const totalDuration = clipDurations.reduce((a, b) => a + b, 0);
+
+  // Maps the preview render's playhead position back to "which shot is on screen right
+  // now" — same clip order/durations the export pipeline actually cut the video with.
+  function finderSyncClips(): FinderSyncClip[] {
+    let acc = 0;
+    return state.timeline.map((clip, i) => {
+      const startSec = acc;
+      acc += clipDurations[i];
+      return { shotFilename: clip.shotFilename, startSec, endSec: acc };
+    });
+  }
 
   function handleDragStart(e: DragEvent<HTMLDivElement>, index: number) {
     e.dataTransfer.setData("text/plain", String(index));
@@ -94,12 +108,40 @@ export function Timeline({
       // preview.mp4 is overwritten in place each time — cache-bust so the <video> reloads the new bytes.
       const src = `/films/${film}/${result.filename}?t=${Date.now()}`;
       setPreviewSrc(src);
-      openLightbox({ kind: "video", src });
+      openLightbox({ kind: "video", src, finderSync: { film, clips: finderSyncClips() } });
     } catch (err) {
       setPreviewError(err instanceof Error ? err.message : String(err));
     } finally {
       setPreviewing(false);
     }
+  }
+
+  function clipMedia(index: number) {
+    const clip = state.timeline[index];
+    const gen = clip ? state.shots[clip.shotFilename]?.generations.find((g) => g.id === clip.generationId) : undefined;
+    if (!gen?.videoFilename) return null;
+    const inSec = gen.inSec ?? 0;
+    const outSec = gen.outSec ?? gen.params.duration;
+    return { src: `/films/${film}/${gen.videoFilename}`, inSec, outSec };
+  }
+
+  function clipNav(index: number): LightboxNav {
+    return {
+      counter: `${index + 1} / ${state.timeline.length}`,
+      onLeft: index > 0 ? () => openClipInLightbox(index - 1) : undefined,
+      onRight: index < state.timeline.length - 1 ? () => openClipInLightbox(index + 1) : undefined,
+    };
+  }
+
+  function openClipInLightbox(index: number) {
+    const media = clipMedia(index);
+    if (!media) return;
+    openLightbox({
+      kind: "video",
+      src: media.src,
+      loop: { inSec: media.inSec, outSec: media.outSec },
+      nav: clipNav(index),
+    });
   }
 
   return (
@@ -158,6 +200,7 @@ export function Timeline({
           const gen = state.shots[clip.shotFilename]?.generations.find((g) => g.id === clip.generationId);
           const inSec = gen?.inSec ?? 0;
           const outSec = gen?.outSec ?? gen?.params.duration ?? 0;
+          const media = clipMedia(i);
           return (
             <div
               key={clip.id}
@@ -165,10 +208,22 @@ export function Timeline({
               onDragStart={(e) => handleDragStart(e, i)}
               onDragOver={handleDragOver}
               onDrop={(e) => handleDrop(e, i)}
-              onClick={() => scrollToShot(clip.shotFilename)}
+              onClick={() => {
+                scrollToShot(clip.shotFilename);
+                selectShotGeneration(clip.shotFilename, clip.generationId);
+              }}
+              {...(media
+                ? hoverableMedia({
+                    kind: "video",
+                    src: media.src,
+                    loop: { inSec: media.inSec, outSec: media.outSec },
+                    nav: clipNav(i),
+                  })
+                : {})}
               style={{
-                flexShrink: 0,
-                width: 110,
+                flex: "1 1 0",
+                minWidth: 40,
+                maxWidth: 110,
                 border: "1px solid #000",
                 borderRadius: 0,
                 padding: "0.25rem",
@@ -246,7 +301,10 @@ export function Timeline({
             {previewing ? "rendering..." : "Preview"}
           </button>
           <button
-            onClick={() => previewSrc && openLightbox({ kind: "video", src: previewSrc })}
+            onClick={() =>
+              previewSrc &&
+              openLightbox({ kind: "video", src: previewSrc, finderSync: { film, clips: finderSyncClips() } })
+            }
             disabled={!previewSrc}
             title="open last preview"
           >
@@ -256,9 +314,18 @@ export function Timeline({
         {previewError && <div style={{ fontSize: "0.65rem", color: "red", maxWidth: 120 }}>{previewError}</div>}
 
         <div style={{ fontSize: "0.8rem" }}>total: {formatTime(totalDuration)}</div>
-        <button onClick={handleExport} disabled={exporting || state.timeline.length === 0} style={{ width: "100%" }}>
-          {exporting ? "exporting..." : "Export"}
-        </button>
+        <div style={{ display: "flex", gap: "0.25rem", width: "100%" }}>
+          <button onClick={handleExport} disabled={exporting || state.timeline.length === 0} style={{ flex: 1 }}>
+            {exporting ? "exporting..." : "Export"}
+          </button>
+          <button
+            onClick={() => exportResult && onRevealExport(exportResult)}
+            disabled={!exportResult}
+            title="reveal exported file in file manager"
+          >
+            Open
+          </button>
+        </div>
         {exportResult && <div style={{ fontSize: "0.7rem", color: "#070" }}>saved {exportResult}</div>}
         {exportError && <div style={{ fontSize: "0.7rem", color: "red", maxWidth: 120 }}>{exportError}</div>}
       </div>

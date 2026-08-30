@@ -33,6 +33,9 @@ export interface ShotState {
   filename: string;
   customText: string;
   generations: Generation[];
+  /** Set when the source image is no longer found on disk — hides the shot from the film
+   * view without losing its generation history. Cleared if the file reappears. */
+  deletedAt?: string;
 }
 
 export interface TimelineClip {

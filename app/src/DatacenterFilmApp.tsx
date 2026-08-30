@@ -26,7 +26,11 @@ export function DatacenterFilmApp() {
   const setSelectedFilm = useSelectedFilmStore((s) => s.setFilm);
   const [state, setState] = useState<FilmStateResponse | null>(null);
   const [genParams, setGenParams] = useState<GenerationParams>({ duration: 6, resolution: "768P" });
-  const sortedShots = state ? Object.values(state.shots).sort((a, b) => a.filename.localeCompare(b.filename)) : [];
+  const sortedShots = state
+    ? Object.values(state.shots)
+        .filter((s) => !s.deletedAt)
+        .sort((a, b) => a.filename.localeCompare(b.filename))
+    : [];
 
   useEffect(() => {
     setShotOrder(sortedShots.map((s) => s.filename));
@@ -98,10 +102,12 @@ export function DatacenterFilmApp() {
             <section style={sectionStyle}>
               <PromptEditor
                 prompts={state.prompts}
+                otherFilms={films.filter((f) => f !== selectedFilm)}
                 onAdd={(text, enabled) => api.addPrompt(selectedFilm, text, enabled).then(setState)}
                 onUpdate={(id, patch) => api.updatePrompt(selectedFilm, id, patch).then(setState)}
                 onDelete={(id) => api.deletePrompt(selectedFilm, id).then(setState)}
                 onReorder={(promptIds) => api.reorderPrompts(selectedFilm, promptIds).then(setState)}
+                onImport={(sourceFilm) => api.importPrompts(selectedFilm, sourceFilm).then(setState)}
               />
             </section>
           </aside>
@@ -119,6 +125,7 @@ export function DatacenterFilmApp() {
                 shot={shot}
                 genParams={genParams}
                 timeline={state.timeline}
+                aspectRatio={state.aspectRatio}
                 onUpdateShot={(filename, patch) => api.updateShot(selectedFilm, filename, patch).then(setState)}
                 onGenerate={async (filename, params: GenerationParams) => {
                   await api.generate(selectedFilm, filename, params);
@@ -167,6 +174,7 @@ export function DatacenterFilmApp() {
           onUpdateAspectRatio={(aspectRatio) => api.updateAspectRatio(selectedFilm, aspectRatio).then(setState)}
           onExport={() => api.exportFilm(selectedFilm)}
           onPreview={() => api.previewFilm(selectedFilm)}
+          onRevealExport={(filename) => api.revealExport(selectedFilm, filename)}
         />
       )}
     </main>

@@ -8,6 +8,7 @@ import {
   getFilmDir,
   getMergedFilmState,
   mutateFilmState,
+  repoRoot,
 } from "./state";
 import { checkStatus, downloadVideo, fetchResult, MODEL, submitGeneration, uploadImage } from "./fal";
 import { exportFilm } from "./export";
@@ -71,6 +72,23 @@ function openInFileManager(absPath: string): void {
   else Bun.spawn(["xdg-open", absPath]);
 }
 
+/** Opens the file's containing folder with the file itself selected/highlighted. */
+function revealInFileManager(absPath: string): void {
+  if (process.platform === "darwin") Bun.spawn(["open", "-R", absPath]);
+  else if (process.platform === "win32") Bun.spawn(["explorer", `/select,${absPath}`]);
+  else Bun.spawn(["xdg-open", path.dirname(absPath)]);
+}
+
+/**
+ * Updates the selection in whatever Finder window is already showing this file's folder
+ * (opening one if none is), without stealing focus from the browser — meant to be called
+ * rapidly, e.g. once per cut while a timeline preview plays. macOS only.
+ */
+function selectInFinder(absPath: string): void {
+  const escaped = absPath.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  Bun.spawn(["osascript", "-e", `tell application "Finder" to reveal POSIX file "${escaped}"`]);
+}
+
 const server = Bun.serve({
   port: PORT,
   idleTimeout: 0,
@@ -130,6 +148,25 @@ const server = Bun.serve({
       },
     },
 
+    "/api/films/:film/prompts/import": {
+      POST: async (req) => {
+        const body = (await req.json()) as { sourceFilm?: string };
+        if (!body.sourceFilm) return json({ error: "sourceFilm is required" }, { status: 400 });
+        const source = await getMergedFilmState(body.sourceFilm);
+        const state = await mutateFilmState(req.params.film, (s) => {
+          for (const p of source.prompts) {
+            s.prompts.push({
+              id: nanoid(8),
+              text: p.text,
+              enabled: p.enabled,
+              createdAt: new Date().toISOString(),
+            });
+          }
+        });
+        return json(state);
+      },
+    },
+
     "/api/films/:film/prompts/:id": {
       PATCH: async (req) => {
         const body = (await req.json()) as Partial<Pick<PromptDef, "text" | "enabled">>;
@@ -163,15 +200,22 @@ const server = Bun.serve({
 
     "/api/films/:film/shots/:filename/reveal": {
       POST: async (req) => {
-        const absPath = path.join(getFilmDir(req.params.film), req.params.filename);
         try {
-          if (process.platform === "darwin") {
-            Bun.spawn(["open", "-R", absPath]);
-          } else if (process.platform === "win32") {
-            Bun.spawn(["explorer", `/select,${absPath}`]);
-          } else {
-            Bun.spawn(["xdg-open", path.dirname(absPath)]);
-          }
+          revealInFileManager(path.join(getFilmDir(req.params.film), req.params.filename));
+          return json({ ok: true });
+        } catch (err) {
+          return json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+        }
+      },
+    },
+
+    "/api/films/:film/shots/:filename/finder-select": {
+      POST: async (req) => {
+        if (process.platform !== "darwin") {
+          return json({ error: "Finder sync is only available on macOS" }, { status: 400 });
+        }
+        try {
+          selectInFinder(path.join(getFilmDir(req.params.film), req.params.filename));
           return json({ ok: true });
         } catch (err) {
           return json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
@@ -365,6 +409,22 @@ const server = Bun.serve({
           return json(result);
         } catch (err) {
           return json({ error: err instanceof Error ? err.message : String(err) }, { status: 400 });
+        }
+      },
+    },
+
+    "/api/films/:film/export/reveal": {
+      POST: async (req) => {
+        const body = (await req.json()) as { filename?: string };
+        const filename = body.filename;
+        if (!filename || filename.includes("/") || filename.includes("\\") || filename.includes("..")) {
+          return json({ error: "invalid filename" }, { status: 400 });
+        }
+        try {
+          revealInFileManager(path.join(repoRoot(), "exports", filename));
+          return json({ ok: true });
+        } catch (err) {
+          return json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
         }
       },
     },

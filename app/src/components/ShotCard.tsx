@@ -1,11 +1,18 @@
 import { useEffect, useRef, useState } from "react";
-import type { GenerationParams, ShotState, TimelineClip } from "@server/types";
+import type { AspectRatio, GenerationParams, ShotState, TimelineClip } from "@server/types";
 import { Carousel } from "./Carousel";
 import { hoverableMedia } from "../lightbox";
 import { buildShotNav, registerShot } from "../shotRegistry";
+import { useSeenGenerationsStore } from "../seenGenerationsStore";
 
-const MEDIA_WIDTH = 400;
-const MEDIA_HEIGHT = 225; // 16:9
+// Longest side of the input/output preview boxes; the other side is derived from the
+// film's aspect ratio so these mirror what export.ts actually renders.
+const MEDIA_BOX = 400;
+const MEDIA_DIMENSIONS: Record<AspectRatio, { width: number; height: number }> = {
+  landscape: { width: MEDIA_BOX, height: Math.round((MEDIA_BOX * 9) / 16) },
+  square: { width: MEDIA_BOX, height: MEDIA_BOX },
+  portrait: { width: Math.round((MEDIA_BOX * 9) / 16), height: MEDIA_BOX },
+};
 const PROMPT_COL_WIDTH = 260;
 
 function randomSeed(): number {
@@ -17,6 +24,7 @@ export function ShotCard({
   shot,
   genParams,
   timeline,
+  aspectRatio,
   onUpdateShot,
   onGenerate,
   onDeleteGeneration,
@@ -29,6 +37,7 @@ export function ShotCard({
   shot: ShotState;
   genParams: GenerationParams;
   timeline: TimelineClip[];
+  aspectRatio: AspectRatio;
   onUpdateShot: (filename: string, patch: { customText?: string }) => void;
   onGenerate: (filename: string, params: GenerationParams) => Promise<void>;
   onDeleteGeneration: (filename: string, generationId: string) => void;
@@ -69,8 +78,13 @@ export function ShotCard({
     registerShot({ film, filename: shot.filename, generations: shot.generations, setIndex });
   }, [film, shot.filename, shot.generations]);
 
+  const { width: MEDIA_WIDTH, height: MEDIA_HEIGHT } = MEDIA_DIMENSIONS[aspectRatio];
+
   const hasGenerations = shot.generations.length > 0;
   const gen = hasGenerations ? shot.generations[Math.max(0, Math.min(index, shot.generations.length - 1))] : null;
+  const isUnwatched = useSeenGenerationsStore((s) =>
+    gen != null && gen.status === "completed" ? !s.seen[gen.id] : false,
+  );
   const timelineClip = gen ? timeline.find((c) => c.shotFilename === shot.filename && c.generationId === gen.id) : undefined;
   const isOnTimeline = timelineClip != null;
 
@@ -121,12 +135,34 @@ export function ShotCard({
                 style={{
                   margin: 0,
                   minWidth: 0,
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.4rem",
                 }}
               >
-                {shot.filename}
+                {isUnwatched && (
+                  <span
+                    title="finished render — not watched yet"
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: "50%",
+                      background: "#0a0",
+                      flexShrink: 0,
+                      display: "inline-block",
+                    }}
+                  />
+                )}
+                <span
+                  style={{
+                    minWidth: 0,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {shot.filename}
+                </span>
               </h3>
               <button
                 onClick={() => onReveal(shot.filename)}

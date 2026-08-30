@@ -7,7 +7,24 @@ export interface LightboxNav {
   onDown?: () => void;
 }
 
-export type HoveredMedia = { kind: "image" | "video"; src: string; nav?: LightboxNav } | null;
+/** One segment of the global timeline, in playback order, for live Finder-selection sync. */
+export interface FinderSyncClip {
+  shotFilename: string;
+  startSec: number;
+  endSec: number;
+}
+
+export type HoveredMedia =
+  | {
+      kind: "image" | "video";
+      src: string;
+      nav?: LightboxNav;
+      loop?: { inSec: number; outSec: number };
+      /** While set, playback drives the local Finder window's selection to match whichever
+       * shot's source image is "on screen" at the current playhead position. macOS only. */
+      finderSync?: { film: string; clips: FinderSyncClip[] };
+    }
+  | null;
 
 let current: HoveredMedia = null;
 

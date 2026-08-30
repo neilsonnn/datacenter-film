@@ -21,6 +21,15 @@ export function setShotOrder(filenames: string[]): void {
   order = filenames;
 }
 
+/** Selects a specific generation on a shot's card by id, e.g. when clicking a clip in the
+ * global timeline — jumps the shot's carousel to whichever output that clip actually is. */
+export function selectShotGeneration(filename: string, generationId: string): void {
+  const entry = registry.get(filename);
+  if (!entry) return;
+  const idx = entry.generations.findIndex((g) => g.id === generationId);
+  if (idx !== -1) entry.setIndex(idx);
+}
+
 function adjacentFilename(filename: string, direction: 1 | -1): string | null {
   const idx = order.indexOf(filename);
   if (idx === -1) return null;

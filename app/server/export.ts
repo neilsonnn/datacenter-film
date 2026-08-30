@@ -108,7 +108,28 @@ export async function exportFilm(
     await Bun.write(concatListPath, concatList);
 
     const concatVideoPath = path.join(tmpDir, "concat.mp4");
-    await runFfmpeg(["-y", "-f", "concat", "-safe", "0", "-i", concatListPath, "-c", "copy", concatVideoPath]);
+    // Video is a cheap stream copy, but audio must be decoded and re-encoded here (not
+    // copied): each clip above was AAC-encoded independently, and every independent AAC
+    // encode carries a few ms of encoder "priming" delay. Splicing those compressed
+    // bitstreams together with -c copy leaves that discontinuity baked into the file —
+    // inaudible in some players (e.g. Chrome) but an audible click at every cut in others
+    // (e.g. QuickTime). Re-encoding here collapses everything into one continuous track.
+    await runFfmpeg([
+      "-y",
+      "-f",
+      "concat",
+      "-safe",
+      "0",
+      "-i",
+      concatListPath,
+      "-c:v",
+      "copy",
+      "-c:a",
+      "aac",
+      "-b:a",
+      "192k",
+      concatVideoPath,
+    ]);
 
     let outputFilename: string;
     let outputPath: string;

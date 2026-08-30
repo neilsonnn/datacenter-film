@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import type { Generation } from "@server/types";
 import { setHoveredMedia, type LightboxNav } from "../lightbox";
+import { useSeenGenerationsStore } from "../seenGenerationsStore";
 
 function clamp01(x: number): number {
   return Math.min(1, Math.max(0, x));
@@ -37,6 +38,7 @@ export function Carousel({
   const draggedRef = useRef(false);
   const [hovering, setHovering] = useState(false);
   const [drag, setDrag] = useState<DragState | null>(null);
+  const markSeen = useSeenGenerationsStore((s) => s.markSeen);
 
   const totalDuration = generation?.params.duration ?? 0;
   const committedIn = generation?.inSec ?? 0;
@@ -137,6 +139,7 @@ export function Carousel({
             onMouseEnter={() => {
               setHovering(true);
               setHoveredMedia({ kind: "video", src: `/films/${film}/${generation.videoFilename}`, nav });
+              markSeen(generation.id);
             }}
             onMouseLeave={() => setHovering(false)}
             onMouseDown={handleMouseDown}
